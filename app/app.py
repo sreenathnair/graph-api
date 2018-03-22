@@ -1,34 +1,20 @@
 from flask import Flask, jsonify
 from .model import graph
+from .amino_acid_codes import amino_acid_codes
 
 app = Flask(__name__)
 
-tasks = [
-    {
-        'id': 1,
-        'title': u'Buy groceries',
-        'description': u'Milk, Cheese, Pizza, Fruit, Tylenol', 
-        'done': False
-    },
-    {
-        'id': 2,
-        'title': u'Learn Python',
-        'description': u'Need to find a good Python tutorial on the web', 
-        'done': False
-    }
-]
-
 @app.route('/')
-def hello():
-    print(graph)
-    return jsonify({'tasks': tasks})
+def default():
+
+    return 'Default'
 
 @app.route('/api/mappings/uniprot/<string:entry_id>')
 def get_uniprot(entry_id):
 
     query = """
-    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_UNIPROT]->(unp:UniProt)-[:HAS_UNP_RESIDUE]->(unp_res:UNP_Residue)
-    MATCH (entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[r:MAP_TO_UNIPROT_RESIDUE]->(unp_res)
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[r:MAP_TO_UNIPROT_RESIDUE]->
+    (unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt)
     RETURN toInteger(entity.ID) as entityId, unp.ACCESSION, unp.NAME, toInteger(pdb_res.ID) as pdbResId, toInteger(unp_res.ID) as unpResId, r.CHAINS order by toInteger(pdb_res.ID)
     """
 
@@ -295,13 +281,11 @@ def get_mappings_for_residue_scop(entry_id, entity_id, residue_number):
 @app.route('/api/mappings/unipdb/<string:uniprot_accession>')
 def get_unipdb(uniprot_accession):
 
-    print(uniprot_accession)
-
     query = """
-    MATCH (unp:UniProt {ACCESSION:$accession})<-[:HAS_UNIPROT]-(entity:Entity)<-[:HAS_ENTITY]-(entry:Entry),
-    (entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[relation:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp)
-    WITH entry.ID AS entryId, entity.ID AS entityId, relation.CHAINS AS chains, toInteger(pdb_res.ID) AS pdbRes, toInteger(unp_res.ID) AS unpRes
-    RETURN entryId, entityId, chains, min(pdbRes) AS pdbStart, max(pdbRes) AS pdbEnd, min(unpRes) AS unpStart, max(unpRes) AS unpEnd
+    MATCH (unp:UniProt {ACCESSION:$accession})-[:HAS_UNP_RESIDUE]->(unp_res:UNP_Residue)<-[relation:MAP_TO_UNIPROT_RESIDUE]-(pdb_res:PDB_Residue)
+    <-[:HAS_PDB_RESIDUE]-(entity:Entity)<-[:HAS_ENTITY]-(entry:Entry)
+    WITH entry.ID AS entryId, entity.ID AS entityId, relation.CHAINS AS chains, toInteger(pdb_res.ID) AS pdbRes, toInteger(unp_res.ID) AS unpRes, pdb_res.CHEM_COMP_ID AS pdbResCode, unp_res.ONE_LETTER_CODE AS unpResCode 
+    RETURN entryId, entityId, chains, pdbRes, unpRes, pdbResCode, unpResCode ORDER BY entryId, pdbRes
     """
 
     mappings = list(graph.run(query, parameters= {
@@ -315,19 +299,89 @@ def get_unipdb(uniprot_accession):
         }
     }
 
+    entry_entity_dict = {}
+
+
     for mapping in mappings:
         
-        (entry, entity, chains, pdb_start, pdb_end, unp_start, unp_end) = mapping
-        final_result[uniprot_accession]['mappings'].append({
-            'entry_id': entry,
-            'entity_id': entity,
-            'chains': chains,
-            'pdb_start': pdb_start,
-            'pdb_end': pdb_end,
-            'unp_start': unp_start,
-            'unp_end': unp_end
+        (entry, entity, chains, pdb_res, unp_res, pdb_res_code, unp_res_code) = mapping
+        pdb_res_one_letter, pdb_res_desc = amino_acid_codes[pdb_res_code]
+        del pdb_res_desc
+        data = (chains, pdb_res, unp_res, pdb_res_one_letter, unp_res_code)
+
+        # create array of mappings in dict for an (entry, entity) pair if not present
+        if entry_entity_dict.get((entry, entity)) is None:
+            entry_entity_dict[(entry, entity)] = [data]
+        else:
+            entry_entity_dict[(entry, entity)].append(data)
+
+
+    final_map = {}
+
+    for key in entry_entity_dict.keys():
+        final_map[key] = []
+        pdb_seq = ''
+        unp_seq = ''
+        prev_pdb_res = None
+        prev_unp_res = None
+        pdb_start = None
+        unp_start = None
+        incr = 0
+        start = True
+
+        while incr < len(entry_entity_dict[key]):
+            (chains, pdb_res, unp_res, pdb_res_code, unp_res_code) = entry_entity_dict[key][incr]
+           
+            if start or prev_pdb_res == pdb_res - 1:
+                if start:
+                    if prev_pdb_res != None:
+                        pdb_start = prev_pdb_res
+                        unp_start = prev_unp_res
+                    else:
+                        pdb_start = pdb_res
+                        unp_start = unp_res
+                pdb_seq += pdb_res_code
+                unp_seq += unp_res_code
+                start = False
+            else:
+                # check for a new segment
+                final_map[key].append((chains, pdb_seq, unp_seq, pdb_start, prev_pdb_res, unp_start, prev_unp_res)) # pdb_res and unp_end will be ending residue numbers
+                pdb_seq = pdb_res_code
+                unp_seq = unp_res_code
+                start = True
+            
+            # the very last residue
+            if incr == len(entry_entity_dict[key]) - 1:
+                final_map[key].append((chains, pdb_seq, unp_seq, pdb_start, pdb_res, unp_start, unp_res)) # pdb_res and unp_end will be ending residue numbers
+
+            prev_pdb_res = pdb_res
+            prev_unp_res = unp_res
+            incr += 1
+
+    
+    for key in final_map.keys():
+        entry_id, entity_id = key
+
+        mappings = []
+
+        for mapping in final_map[key]:
+            (chains, pdb_seq, unp_seq, pdb_start, pdb_end, unp_start, unp_end) = mapping
+            mappings.append({
+                'chains': chains,
+                'pdb_sequence': pdb_seq,
+                'unp_sequence': unp_seq,
+                'pdb_start': pdb_start,
+                'pdb_end': pdb_end,
+                'unp_start': unp_start,
+                'unp_end': unp_end
+            })
+
+        final_result[uniprot_accession]['mappings'].append({    
+            'entry_id': entry_id,
+            'entity_id': entity_id,
+            'segments': mappings
         })
-        
+
     return jsonify(final_result)
 
 
@@ -357,3 +411,60 @@ def get_mappings_for_unp_residue_pfam(uniprot_accession):
             }
 
     return final_result
+
+
+@app.route('/api/mappings/unipdb/<string:uniprot_accession>/<string:unp_res>')
+def get_unipdb_residue(uniprot_accession, unp_res):
+
+    query = """
+    MATCH (unp:UniProt {ACCESSION:$accession})-[:HAS_UNP_RESIDUE]->(unp_res:UNP_Residue {ID:$unpResidue})<-[:MAP_TO_UNIPROT_RESIDUE]-(pdb_res:PDB_Residue)<-[:HAS_PDB_RESIDUE]-(entity:Entity)<-[:HAS_ENTITY]-(entry:Entry)
+    RETURN entry.ID AS entryId, entity.ID AS entityId, pdb_res.ID AS pdbRes
+    """
+
+    mappings = list(graph.run(query, parameters= {
+        'accession': str(uniprot_accession), 'unpResidue': str(unp_res)
+    }))
+
+    final_result = {
+        uniprot_accession: {
+        }
+    }
+
+    pfam_dict = {}
+    interpro_dict = {}
+    cath_dict = {}
+    scop_dict = {}
+
+    for mapping in mappings:
+        
+        (entry_id, entity_id, pdb_res) = mapping
+        temp_map = get_mappings_for_residue_pfam(entry_id, entity_id, pdb_res)
+
+        for pfam in temp_map.keys():
+            if pfam_dict.get(pfam) is None:
+                pfam_dict[pfam] = temp_map[pfam]
+
+        temp_map = get_mappings_for_residue_interpro(entry_id, entity_id, pdb_res)
+
+        for interpro in temp_map.keys():
+            if interpro_dict.get(interpro) is None:
+                interpro_dict[interpro] = temp_map[interpro]
+
+        temp_map = get_mappings_for_residue_cath(entry_id, entity_id, pdb_res)
+
+        for cath in temp_map.keys():
+            if cath_dict.get(cath) is None:
+                cath_dict[cath] = temp_map[cath]
+
+        temp_map = get_mappings_for_residue_scop(entry_id, entity_id, pdb_res)
+
+        for scop in temp_map.keys():
+            if scop_dict.get(scop) is None:
+                scop_dict[scop] = temp_map[scop]
+
+    final_result[uniprot_accession]['Pfam'] = pfam_dict
+    final_result[uniprot_accession]['InterPro'] = interpro_dict
+    final_result[uniprot_accession]['CATH'] = cath_dict
+    final_result[uniprot_accession]['SCOP'] = scop_dict
+
+    return jsonify(final_result)
