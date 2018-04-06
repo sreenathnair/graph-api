@@ -121,6 +121,7 @@ def get_mappings_for_residue(entry_id, entity_id, residue_number):
     final_result[entry_id]["InterPro"] = get_mappings_for_residue_interpro(entry_id, entity_id, residue_number)
     final_result[entry_id]["CATH"] = get_mappings_for_residue_cath(entry_id, entity_id, residue_number)
     final_result[entry_id]["SCOP"] = get_mappings_for_residue_scop(entry_id, entity_id, residue_number)
+    final_result[entry_id]["binding_sites"] = get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number)
 
     return jsonify(final_result)
 
@@ -277,6 +278,212 @@ def get_mappings_for_residue_scop(entry_id, entity_id, residue_number):
     return final_result
 
 
+
+def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity {ID:$entity_id})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residue})-[res_relation:IS_IN_BINDING_SITE]->
+    (site:Binding_Site)
+    WITH site, pdb_res
+    MATCH (ligand:Ligand)-[ligand_relation:IS_IN_BINDING_SITE]->(site)-[bound_relation:BOUNDED_BY]->(boundLigand:Ligand)
+    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, boundLigand.ID, boundLigand.NAME, boundLigand.FORMULA, bound_relation.AUTH_ASYM_ID, bound_relation.STRUCT_ASYM_ID, 
+    bound_relation.AUTH_SEQ_ID, bound_relation.ENTITY_ID, bound_relation.RESIDUE_ID, ligand.ID, ligand.NAME, ligand.FORMULA, ligand_relation.AUTH_ASYM_ID, ligand_relation.AUTH_SEQ_ID, 
+    ligand_relation.STRUCT_ASYM_ID, ligand_relation.SYMMETRY_SYMBOL, ligand_relation.ENTITY_ID, ligand_relation.RESIDUE_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
+    """
+
+    mappings = list(graph.run(query, parameters= {
+        'entry_id': str(entry_id), 'entity_id': str(entity_id), 'residue': str(residue_number)
+    }))
+
+    site_dict = {}
+    site_ligand_dict = {}
+    site_boundligand_dict = {}
+    residue_chem_comp_id = None
+    final_result = []
+
+    for mapping in mappings:
+        
+        (site_id, site_name, site_evidence, bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id,
+        bound_residue_id, ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id,
+        pdb_res, pdb_res_chem_comp_id) = mapping
+
+        if(residue_chem_comp_id is None):
+            residue_chem_comp_id = pdb_res_chem_comp_id
+
+        if(site_dict.get(site_id) is None):
+            site_dict[site_id] = (site_name, site_evidence)
+
+        if(site_boundligand_dict.get(site_id) is None):
+            site_boundligand_dict[site_id] = [(bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
+                                                              bound_auth_seq_id, bound_entity_id, bound_residue_id)]
+        else:
+            site_boundligand_dict[site_id].append((bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
+                                                              bound_auth_seq_id, bound_entity_id, bound_residue_id))
+
+        if(site_ligand_dict.get(site_id) is None):
+            site_ligand_dict[site_id] = [(ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id)]
+        else:
+            site_ligand_dict[site_id].append((ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id))
+
+
+    for key in site_dict.keys():
+        (site_name, evidence) = site_dict[key]
+        temp = {
+            "site_id": key,
+            "evidence_code": evidence,
+            "details": site_name,
+            "site_residues": [],
+            "ligand_residues": []
+        }
+
+        for result in list(set(site_boundligand_dict[key])):
+            (bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id, bound_residue_id) = result
+            
+            temp["ligand_residues"].append({
+                "entity_id": bound_entity_id,
+                "residue_number": bound_residue_id,
+                "author_insertion_code": "null",
+                "chain_id": bound_auth_asym_id,
+                "author_residue_number": bound_auth_seq_id,
+                "chem_comp_id": bound_ligand,
+                "struct_asym_id": bound_struct_asym_id
+            })
+        for result in site_ligand_dict[key]:
+            (ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id) = result
+            
+            temp["site_residues"].append({
+                "entity_id": ligand_entity_id,
+                "residue_number": ligand_residue_id,
+                "author_insertion_code": "null",
+                "chain_id": ligand_auth_asym_id,
+                "author_residue_number": ligand_auth_seq_id,
+                "chem_comp_id": ligand,
+                "struct_asym_id": ligand_struct_asym_id,
+                "symmetry_symbol": ligand_sym_symbol
+            })
+
+        final_result.append(temp)
+
+    return final_result
+
+@app.route('/api/mappings/binding_sites/<string:entry_id>')
+def get_binding_sites_for_entry(entry_id):
+
+    site_dict = {}
+    site_ligand_dict = {}
+    site_boundligand_dict = {}
+    site_residue_dict = {}
+    final_result = []
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[relation:HAS_BINDING_SITE]->(site:Binding_Site)
+    WITH site
+    MATCH (ligand:Ligand)-[ligand_relation:IS_IN_BINDING_SITE]->(site)-[bound_relation:BOUNDED_BY]->(boundLigand:Ligand)
+    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, boundLigand.ID, boundLigand.NAME, boundLigand.FORMULA, bound_relation.AUTH_ASYM_ID, bound_relation.STRUCT_ASYM_ID, 
+    bound_relation.AUTH_SEQ_ID, bound_relation.ENTITY_ID, bound_relation.RESIDUE_ID, ligand.ID, ligand.NAME, ligand.FORMULA, ligand_relation.AUTH_ASYM_ID, ligand_relation.AUTH_SEQ_ID, 
+    ligand_relation.STRUCT_ASYM_ID, ligand_relation.SYMMETRY_SYMBOL, ligand_relation.ENTITY_ID, ligand_relation.RESIDUE_ID ORDER BY site.ID
+    """
+
+    mappings = list(graph.run(query, parameters= {
+        'entry_id': str(entry_id)
+    }))
+
+    for mapping in mappings:
+        
+        (site_id, site_name, site_evidence, bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id,
+        bound_residue_id, ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, 
+        ligand_residue_id) = mapping
+
+        boundligand_to_list = (bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
+                                                              bound_auth_seq_id, bound_entity_id, bound_residue_id)
+
+        ligand_to_list = (ligand, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id)
+
+        if(site_dict.get(site_id) is None):
+            site_dict[site_id] = (site_name, site_evidence)
+
+        if(site_boundligand_dict.get(site_id) is None):
+            site_boundligand_dict[site_id] = [boundligand_to_list]
+        else:
+            site_boundligand_dict[site_id].append(boundligand_to_list)
+
+        if(site_ligand_dict.get(site_id) is None):
+            site_ligand_dict[site_id] = [ligand_to_list]
+        else:
+            site_ligand_dict[site_id].append(ligand_to_list)
+
+
+    del mappings
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[relation:HAS_BINDING_SITE]->(site:Binding_Site)
+    MATCH (entry)-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[res_relation:IS_IN_BINDING_SITE]->(site)
+    WITH site, pdb_res, res_relation
+    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, pdb_res.ID, res_relation.ENTITY_ID, pdb_res.CHEM_COMP_ID, res_relation.AUTH_ASYM_ID, 
+    res_relation.AUTH_SEQ_ID, res_relation.STRUCT_ASYM_ID, res_relation.SYMMETRY_SYMBOL ORDER BY site.ID
+    """
+
+    mappings = list(graph.run(query, parameters= {
+        'entry_id': str(entry_id)
+    }))
+
+    
+    for mapping in mappings:
+
+        print('mappings->', mapping)
+        
+        (site_id, site_name, site_evidence, pdb_res, pdb_res_entity_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_auth_seq_id, pdb_res_struct_asym_id, 
+        pdb_res_sym_symbol) = mapping
+
+        residue_to_list = (pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_auth_seq_id, pdb_res_struct_asym_id, pdb_res_sym_symbol, pdb_res_entity_id, pdb_res)
+
+        if(site_ligand_dict.get(site_id) is None):
+            site_ligand_dict[site_id] = [residue_to_list]
+        else:
+            site_ligand_dict[site_id].append(residue_to_list)
+
+    for key in site_dict.keys():
+        (site_name, evidence) = site_dict[key]
+        temp = {
+            "site_id": key,
+            "evidence_code": evidence,
+            "details": site_name,
+            "site_residues": [],
+            "ligand_residues": []
+        }
+
+        for result in list(set(site_boundligand_dict[key])):
+            (bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id, bound_residue_id) = result
+            
+            temp["ligand_residues"].append({
+                "entity_id": bound_entity_id,
+                "residue_number": bound_residue_id,
+                "author_insertion_code": "null",
+                "chain_id": bound_auth_asym_id,
+                "author_residue_number": bound_auth_seq_id,
+                "chem_comp_id": bound_ligand,
+                "struct_asym_id": bound_struct_asym_id
+            })
+        
+        for result in list(set(site_ligand_dict[key])):
+            (ligand, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id) = result
+            
+            temp["site_residues"].append({
+                "entity_id": ligand_entity_id,
+                "residue_number": ligand_residue_id,
+                "author_insertion_code": "null",
+                "chain_id": ligand_auth_asym_id,
+                "author_residue_number": ligand_auth_seq_id,
+                "chem_comp_id": ligand,
+                "struct_asym_id": ligand_struct_asym_id,
+                "symmetry_symbol": ligand_sym_symbol
+            })
+        
+        final_result.append(temp)
+
+    return jsonify({
+        entry_id: final_result
+    })
 
 @app.route('/api/mappings/unipdb/<string:uniprot_accession>')
 def get_unipdb(uniprot_accession):
@@ -468,3 +675,4 @@ def get_unipdb_residue(uniprot_accession, unp_res):
     final_result[uniprot_accession]['SCOP'] = scop_dict
 
     return jsonify(final_result)
+
