@@ -291,6 +291,19 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
     ligand_relation.STRUCT_ASYM_ID, ligand_relation.SYMMETRY_SYMBOL, ligand_relation.ENTITY_ID, ligand_relation.RESIDUE_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
     """
 
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity {ID:$entity_id})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residue})-[res_relation:IS_IN_BINDING_SITE]->
+    (site:Binding_Site)
+    WITH site, pdb_res
+    OPTIONAL MATCH (ligand:Ligand)-[ligand_relation:IS_IN_BINDING_SITE]->(site)
+    OPTIONAL MATCH (site)-[bound_relation:BOUNDED_BY]->(boundLigand:Ligand)
+    OPTIONAL MATCH (site)<-[res_all_relation:IS_IN_BINDING_SITE]-(pdb_res_all:PDB_Residue) WHERE pdb_res_all.ID <> $residue
+    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, pdb_res_all.ID, pdb_res_all.CHEM_COMP_ID, res_all_relation.AUTH_ASYM_ID, res_all_relation.STRUCT_ASYM_ID, 
+    res_all_relation.AUTH_SEQ_ID, res_all_relation.ENTITY_ID, res_all_relation.SYMMETRY_SYMBOL, boundLigand.ID, boundLigand.NAME, boundLigand.FORMULA, bound_relation.AUTH_ASYM_ID, bound_relation.STRUCT_ASYM_ID, 
+    bound_relation.AUTH_SEQ_ID, bound_relation.ENTITY_ID, bound_relation.RESIDUE_ID, ligand.ID, ligand.NAME, ligand.FORMULA, ligand_relation.AUTH_ASYM_ID, ligand_relation.AUTH_SEQ_ID, 
+    ligand_relation.STRUCT_ASYM_ID, ligand_relation.SYMMETRY_SYMBOL, ligand_relation.ENTITY_ID, ligand_relation.RESIDUE_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
+    """
+
     mappings = list(graph.run(query, parameters= {
         'entry_id': str(entry_id), 'entity_id': str(entity_id), 'residue': str(residue_number)
     }))
@@ -298,14 +311,15 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
     site_dict = {}
     site_ligand_dict = {}
     site_boundligand_dict = {}
+    site_pdb_res_dict = {}
     residue_chem_comp_id = None
     final_result = []
 
     for mapping in mappings:
         
-        (site_id, site_name, site_evidence, bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id,
-        bound_residue_id, ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id,
-        pdb_res, pdb_res_chem_comp_id) = mapping
+        (site_id, site_name, site_evidence, pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol, bound_ligand, 
+        bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id, bound_residue_id, ligand, ligand_name, ligand_formula, 
+        ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id, pdb_res, pdb_res_chem_comp_id) = mapping
 
         if(residue_chem_comp_id is None):
             residue_chem_comp_id = pdb_res_chem_comp_id
@@ -313,18 +327,25 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
         if(site_dict.get(site_id) is None):
             site_dict[site_id] = (site_name, site_evidence)
 
-        if(site_boundligand_dict.get(site_id) is None):
-            site_boundligand_dict[site_id] = [(bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
-                                                              bound_auth_seq_id, bound_entity_id, bound_residue_id)]
-        else:
-            site_boundligand_dict[site_id].append((bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
-                                                              bound_auth_seq_id, bound_entity_id, bound_residue_id))
+        if(bound_ligand is not None):
+            if(site_boundligand_dict.get(site_id) is None):
+                site_boundligand_dict[site_id] = [(bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
+                                                                bound_auth_seq_id, bound_entity_id, bound_residue_id)]
+            else:
+                site_boundligand_dict[site_id].append((bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
+                                                                bound_auth_seq_id, bound_entity_id, bound_residue_id))
 
-        if(site_ligand_dict.get(site_id) is None):
-            site_ligand_dict[site_id] = [(ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id)]
-        else:
-            site_ligand_dict[site_id].append((ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id))
+        if(ligand is not None):
+            if(site_ligand_dict.get(site_id) is None):
+                site_ligand_dict[site_id] = [(ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id)]
+            else:
+                site_ligand_dict[site_id].append((ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id))
 
+        if(pdb_res_id is not None):
+            if(site_pdb_res_dict.get(site_id) is None):
+                site_pdb_res_dict[site_id] = [(pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol)]
+            else:
+                site_pdb_res_dict[site_id].append((pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol))
 
     for key in site_dict.keys():
         (site_name, evidence) = site_dict[key]
@@ -336,31 +357,50 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
             "ligand_residues": []
         }
 
-        for result in list(set(site_boundligand_dict[key])):
-            (bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id, bound_residue_id) = result
-            
-            temp["ligand_residues"].append({
-                "entity_id": int(bound_entity_id),
-                "residue_number": int(bound_residue_id),
-                "author_insertion_code": "null",
-                "chain_id": bound_auth_asym_id,
-                "author_residue_number": int(bound_auth_seq_id),
-                "chem_comp_id": bound_ligand,
-                "struct_asym_id": bound_struct_asym_id
-            })
-        for result in site_ligand_dict[key]:
-            (ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id) = result
-            
-            temp["site_residues"].append({
-                "entity_id": int(ligand_entity_id),
-                "residue_number": int(ligand_residue_id),
-                "author_insertion_code": "null",
-                "chain_id": ligand_auth_asym_id,
-                "author_residue_number": int(ligand_auth_seq_id),
-                "chem_comp_id": ligand,
-                "struct_asym_id": ligand_struct_asym_id,
-                "symmetry_symbol": ligand_sym_symbol
-            })
+        if(site_boundligand_dict.get(key) is not None):
+            for result in list(set(site_boundligand_dict[key])):
+                (bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id, bound_residue_id) = result
+                
+                temp["ligand_residues"].append({
+                    "entity_id": int(bound_entity_id),
+                    "residue_number": int(bound_residue_id),
+                    "author_insertion_code": "null",
+                    "chain_id": bound_auth_asym_id,
+                    "author_residue_number": int(bound_auth_seq_id),
+                    "chem_comp_id": bound_ligand,
+                    "struct_asym_id": bound_struct_asym_id
+                })
+        
+        if(site_ligand_dict.get(key) is not None):
+            for result in list(set(site_ligand_dict[key])):
+                (ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id) = result
+                
+                temp["site_residues"].append({
+                    "entity_id": int(ligand_entity_id),
+                    "residue_number": int(ligand_residue_id),
+                    "author_insertion_code": "null",
+                    "chain_id": ligand_auth_asym_id,
+                    "author_residue_number": int(ligand_auth_seq_id),
+                    "chem_comp_id": ligand,
+                    "struct_asym_id": ligand_struct_asym_id,
+                    "symmetry_symbol": ligand_sym_symbol
+                })
+
+        if(site_pdb_res_dict.get(key) is not None):
+            for result in list(set(site_pdb_res_dict[key])):
+                (pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol) = result
+
+                temp["site_residues"].append({
+                    "entity_id": int(pdb_res_entity_id),
+                    "residue_number": int(pdb_res_id),
+                    "author_insertion_code": "null",
+                    "chain_id": pdb_res_auth_asym_id,
+                    "author_residue_number": int(pdb_res_auth_seq_id),
+                    "chem_comp_id": pdb_res_chem_comp_id,
+                    "struct_asym_id": pdb_res_struct_asym_id,
+                    "symmetry_symbol": pdb_res_symmetry_symbol
+                })
+
 
         final_result.append(temp)
 
