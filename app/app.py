@@ -121,7 +121,7 @@ def get_mappings_for_residue(entry_id, entity_id, residue_number):
     final_result[entry_id]["InterPro"] = get_mappings_for_residue_interpro(entry_id, entity_id, residue_number)
     final_result[entry_id]["CATH"] = get_mappings_for_residue_cath(entry_id, entity_id, residue_number)
     final_result[entry_id]["SCOP"] = get_mappings_for_residue_scop(entry_id, entity_id, residue_number)
-    final_result[entry_id]["binding_sites"] = get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number)
+    final_result[entry_id]["binding_sites"] = get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, True)
 
     return jsonify(final_result)
 
@@ -155,7 +155,7 @@ def get_mappings_for_residue_pfam(entry_id, entity_id, residue_number):
     query = """
     MATCH (entry:Entry {ID:$entryId})-[:HAS_ENTITY]->(entity:Entity {ID:$entityId})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residueNumber})-[:MAP_TO_UNIPROT_RESIDUE]->
     (unp_res:UNP_Residue)-[:IS_IN_PFAM]->(pfam:Pfam)
-    RETURN pfam.ACCESSION as pfam_accession, pfam.NAME as pfam_name, pfam.DESCRIPTION as pfam_desc
+    RETURN pfam.PFAM_ACCESSION as pfam_accession, pfam.NAME as pfam_name, pfam.DESCRIPTION as pfam_desc
     """
 
     result = list(graph.run(query, parameters= {
@@ -178,7 +178,7 @@ def get_mappings_for_residue_interpro(entry_id, entity_id, residue_number):
 
     query = """
     MATCH (entry:Entry {ID:$entryId})-[:HAS_ENTITY]->(entity:Entity {ID:$entityId})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residueNumber})-[:IS_IN_INTERPRO]->(interpro:Interpro)
-    RETURN interpro.ACCESSION as interpro_accession, interpro.NAME as interpro_name
+    RETURN interpro.INTERPRO_ACCESSION as interpro_accession, interpro.NAME as interpro_name
     """
 
     result = list(graph.run(query, parameters= {
@@ -279,30 +279,32 @@ def get_mappings_for_residue_scop(entry_id, entity_id, residue_number):
 
 
 
-def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
+def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, site_residues):
 
-    query = """
-    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity {ID:$entity_id})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residue})-[res_relation:IS_IN_BINDING_SITE]->
-    (site:Binding_Site)
-    WITH site, pdb_res
-    MATCH (ligand:Ligand)-[ligand_relation:IS_IN_BINDING_SITE]->(site)-[bound_relation:BOUNDED_BY]->(boundLigand:Ligand)
-    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, boundLigand.ID, boundLigand.NAME, boundLigand.FORMULA, bound_relation.AUTH_ASYM_ID, bound_relation.STRUCT_ASYM_ID, 
-    bound_relation.AUTH_SEQ_ID, bound_relation.ENTITY_ID, bound_relation.RESIDUE_ID, ligand.ID, ligand.NAME, ligand.FORMULA, ligand_relation.AUTH_ASYM_ID, ligand_relation.AUTH_SEQ_ID, 
-    ligand_relation.STRUCT_ASYM_ID, ligand_relation.SYMMETRY_SYMBOL, ligand_relation.ENTITY_ID, ligand_relation.RESIDUE_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
-    """
+    query = None
+    if(site_residues is True):
+        query = """
+        MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity {ID:$entity_id})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residue})-[res_relation:IS_IN_BINDING_SITE]->
+        (site:Binding_Site)
+        WITH site, pdb_res
+        OPTIONAL MATCH (ligand:Ligand)-[:IS_AN_INSTANCE_OF]->(ligand_entity:Entity)-[ligand_entity_relation:CONTAINS_CHAIN]->(ligand_chain:Chain)-[ligand_relation:IS_IN_BINDING_SITE]->(site)
+        OPTIONAL MATCH (site)-[bound_relation:BOUNDED_BY]->(boundligand_chain:Chain)<-[boundligand_entity_relation:CONTAINS_CHAIN]-(boundligand_entity:Entity)-[:IS_AN_INSTANCE_OF]->(boundligand:Ligand)
+        OPTIONAL MATCH (site)<-[res_all_relation:IS_IN_BINDING_SITE]-(pdb_res_all:PDB_Residue)<-[:HAS_PDB_RESIDUE]-(pdb_res_all_entity:Entity) WHERE pdb_res_all.ID <> $residue
+        RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, pdb_res_all.ID, pdb_res_all.CHEM_COMP_ID, res_all_relation.AUTH_ASYM_ID, res_all_relation.STRUCT_ASYM_ID, 
+        res_all_relation.AUTH_SEQ_ID, pdb_res_all_entity.ID, res_all_relation.SYMMETRY_SYMBOL, boundligand.ID, boundligand.NAME, boundligand.FORMULA, boundligand_chain.AUTH_ASYM_ID, boundligand_chain.STRUCT_ASYM_ID, 
+        boundligand_entity_relation.AUTH_SEQ_ID, boundligand_entity.ID, boundligand_entity_relation.RES_ID, ligand.ID, ligand.NAME, ligand.FORMULA, ligand_chain.AUTH_ASYM_ID, ligand_chain.AUTH_SEQ_ID, 
+        ligand_chain.STRUCT_ASYM_ID, ligand_relation.SYMMETRY_SYMBOL, ligand_entity.ID, ligand_chain.RES_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
+        """
+    else:
+        query = """
+        MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity {ID:$entity_id})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residue})-[res_relation:IS_IN_BINDING_SITE]->
+        (site:Binding_Site)
+        WITH site, pdb_res
+        MATCH (site)-[bound_relation:BOUNDED_BY]->(boundLigand:Ligand)
+        RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, boundLigand.ID, boundLigand.NAME, boundLigand.FORMULA, bound_relation.AUTH_ASYM_ID, bound_relation.STRUCT_ASYM_ID, 
+        bound_relation.AUTH_SEQ_ID, bound_relation.ENTITY_ID, bound_relation.RESIDUE_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
+        """
 
-    query = """
-    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity {ID:$entity_id})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residue})-[res_relation:IS_IN_BINDING_SITE]->
-    (site:Binding_Site)
-    WITH site, pdb_res
-    OPTIONAL MATCH (ligand:Ligand)-[ligand_relation:IS_IN_BINDING_SITE]->(site)
-    OPTIONAL MATCH (site)-[bound_relation:BOUNDED_BY]->(boundLigand:Ligand)
-    OPTIONAL MATCH (site)<-[res_all_relation:IS_IN_BINDING_SITE]-(pdb_res_all:PDB_Residue) WHERE pdb_res_all.ID <> $residue
-    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, pdb_res_all.ID, pdb_res_all.CHEM_COMP_ID, res_all_relation.AUTH_ASYM_ID, res_all_relation.STRUCT_ASYM_ID, 
-    res_all_relation.AUTH_SEQ_ID, res_all_relation.ENTITY_ID, res_all_relation.SYMMETRY_SYMBOL, boundLigand.ID, boundLigand.NAME, boundLigand.FORMULA, bound_relation.AUTH_ASYM_ID, bound_relation.STRUCT_ASYM_ID, 
-    bound_relation.AUTH_SEQ_ID, bound_relation.ENTITY_ID, bound_relation.RESIDUE_ID, ligand.ID, ligand.NAME, ligand.FORMULA, ligand_relation.AUTH_ASYM_ID, ligand_relation.AUTH_SEQ_ID, 
-    ligand_relation.STRUCT_ASYM_ID, ligand_relation.SYMMETRY_SYMBOL, ligand_relation.ENTITY_ID, ligand_relation.RESIDUE_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
-    """
 
     mappings = list(graph.run(query, parameters= {
         'entry_id': str(entry_id), 'entity_id': str(entity_id), 'residue': str(residue_number)
@@ -317,9 +319,13 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
 
     for mapping in mappings:
         
-        (site_id, site_name, site_evidence, pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol, bound_ligand, 
-        bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id, bound_residue_id, ligand, ligand_name, ligand_formula, 
-        ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id, pdb_res, pdb_res_chem_comp_id) = mapping
+        if(site_residues is True):
+            (site_id, site_name, site_evidence, pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol, bound_ligand, 
+            bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id, bound_residue_id, ligand, ligand_name, ligand_formula, 
+            ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id, pdb_res, pdb_res_chem_comp_id) = mapping
+        else:
+            (site_id, site_name, site_evidence, bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
+            bound_auth_seq_id, bound_entity_id, bound_residue_id, pdb_res, pdb_res_chem_comp_id) = mapping
 
         if(residue_chem_comp_id is None):
             residue_chem_comp_id = pdb_res_chem_comp_id
@@ -334,28 +340,37 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
             else:
                 site_boundligand_dict[site_id].append((bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, 
                                                                 bound_auth_seq_id, bound_entity_id, bound_residue_id))
+        if(site_residues is True):
+            if(ligand is not None):
+                if(site_ligand_dict.get(site_id) is None):
+                    site_ligand_dict[site_id] = [(ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id)]
+                else:
+                    site_ligand_dict[site_id].append((ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id))
 
-        if(ligand is not None):
-            if(site_ligand_dict.get(site_id) is None):
-                site_ligand_dict[site_id] = [(ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id)]
-            else:
-                site_ligand_dict[site_id].append((ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id))
-
-        if(pdb_res_id is not None):
-            if(site_pdb_res_dict.get(site_id) is None):
-                site_pdb_res_dict[site_id] = [(pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol)]
-            else:
-                site_pdb_res_dict[site_id].append((pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol))
+        if(site_residues is True):
+            if(pdb_res_id is not None):
+                if(site_pdb_res_dict.get(site_id) is None):
+                    site_pdb_res_dict[site_id] = [(pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol)]
+                else:
+                    site_pdb_res_dict[site_id].append((pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol))
 
     for key in site_dict.keys():
         (site_name, evidence) = site_dict[key]
-        temp = {
-            "site_id": key,
-            "evidence_code": evidence,
-            "details": site_name,
-            "site_residues": [],
-            "ligand_residues": []
-        }
+        if(site_residues is True):
+            temp = {
+                "site_id": key,
+                "evidence_code": evidence,
+                "details": site_name,
+                "site_residues": [],
+                "ligand_residues": []
+            }
+        else:
+            temp = {
+                "site_id": key,
+                "evidence_code": evidence,
+                "details": site_name,
+                "ligand_residues": []
+            }
 
         if(site_boundligand_dict.get(key) is not None):
             for result in list(set(site_boundligand_dict[key])):
@@ -371,35 +386,37 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number):
                     "struct_asym_id": bound_struct_asym_id
                 })
         
-        if(site_ligand_dict.get(key) is not None):
-            for result in list(set(site_ligand_dict[key])):
-                (ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id) = result
-                
-                temp["site_residues"].append({
-                    "entity_id": int(ligand_entity_id),
-                    "residue_number": int(ligand_residue_id),
-                    "author_insertion_code": "null",
-                    "chain_id": ligand_auth_asym_id,
-                    "author_residue_number": int(ligand_auth_seq_id),
-                    "chem_comp_id": ligand,
-                    "struct_asym_id": ligand_struct_asym_id,
-                    "symmetry_symbol": ligand_sym_symbol
-                })
+        if(site_residues is True):
+            if(site_ligand_dict.get(key) is not None):
+                for result in list(set(site_ligand_dict[key])):
+                    (ligand, ligand_name, ligand_formula, ligand_auth_asym_id, ligand_auth_seq_id, ligand_struct_asym_id, ligand_sym_symbol, ligand_entity_id, ligand_residue_id) = result
+                    
+                    temp["site_residues"].append({
+                        "entity_id": int(ligand_entity_id),
+                        "residue_number": int(ligand_residue_id),
+                        "author_insertion_code": "null",
+                        "chain_id": ligand_auth_asym_id,
+                        "author_residue_number": int(ligand_auth_seq_id),
+                        "chem_comp_id": ligand,
+                        "struct_asym_id": ligand_struct_asym_id,
+                        "symmetry_symbol": ligand_sym_symbol
+                    })
 
-        if(site_pdb_res_dict.get(key) is not None):
-            for result in list(set(site_pdb_res_dict[key])):
-                (pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol) = result
+        if(site_residues is True):
+            if(site_pdb_res_dict.get(key) is not None):
+                for result in list(set(site_pdb_res_dict[key])):
+                    (pdb_res_id, pdb_res_chem_comp_id, pdb_res_auth_asym_id, pdb_res_struct_asym_id, pdb_res_auth_seq_id, pdb_res_entity_id, pdb_res_symmetry_symbol) = result
 
-                temp["site_residues"].append({
-                    "entity_id": int(pdb_res_entity_id),
-                    "residue_number": int(pdb_res_id),
-                    "author_insertion_code": "null",
-                    "chain_id": pdb_res_auth_asym_id,
-                    "author_residue_number": int(pdb_res_auth_seq_id),
-                    "chem_comp_id": pdb_res_chem_comp_id,
-                    "struct_asym_id": pdb_res_struct_asym_id,
-                    "symmetry_symbol": pdb_res_symmetry_symbol
-                })
+                    temp["site_residues"].append({
+                        "entity_id": int(pdb_res_entity_id),
+                        "residue_number": int(pdb_res_id),
+                        "author_insertion_code": "null",
+                        "chain_id": pdb_res_auth_asym_id,
+                        "author_residue_number": int(pdb_res_auth_seq_id),
+                        "chem_comp_id": pdb_res_chem_comp_id,
+                        "struct_asym_id": pdb_res_struct_asym_id,
+                        "symmetry_symbol": pdb_res_symmetry_symbol
+                    })
 
 
         final_result.append(temp)
@@ -417,11 +434,11 @@ def get_binding_sites_for_entry(entry_id):
 
     query = """
     MATCH (entry:Entry {ID:$entry_id})-[relation:HAS_BINDING_SITE]->(site:Binding_Site)
-    OPTIONAL MATCH (ligand:Ligand)-[ligand_relation:IS_IN_BINDING_SITE]->(site)
-    OPTIONAL MATCH (site)-[bound_relation:BOUNDED_BY]->(boundLigand:Ligand)
-    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, boundLigand.ID, boundLigand.NAME, boundLigand.FORMULA, bound_relation.AUTH_ASYM_ID, bound_relation.STRUCT_ASYM_ID, 
-    bound_relation.AUTH_SEQ_ID, bound_relation.ENTITY_ID, bound_relation.RESIDUE_ID, ligand.ID, ligand.NAME, ligand.FORMULA, ligand_relation.AUTH_ASYM_ID, ligand_relation.AUTH_SEQ_ID, 
-    ligand_relation.STRUCT_ASYM_ID, ligand_relation.SYMMETRY_SYMBOL, ligand_relation.ENTITY_ID, ligand_relation.RESIDUE_ID ORDER BY site.ID
+    OPTIONAL MATCH (site)<-[ligand_site_relation:IS_IN_BINDING_SITE]-(ligand_chain:Chain)<-[ligand_relation:CONTAINS_CHAIN]-(ligand_entity:Entity)-[:IS_AN_INSTANCE_OF]->(ligand:Ligand)
+    OPTIONAL MATCH (site)-[:BOUNDED_BY]->(boundligand_chain:Chain)<-[bound_relation:CONTAINS_CHAIN]-(boundligand_entity:Entity)-[:IS_AN_INSTANCE_OF]->(boundligand:Ligand)
+    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, boundligand.ID, boundligand.NAME, boundligand.FORMULA, boundligand_chain.AUTH_ASYM_ID, boundligand_chain.STRUCT_ASYM_ID, 
+    bound_relation.AUTH_SEQ_ID, boundligand_entity.ID, bound_relation.RES_ID, ligand.ID, ligand.NAME, ligand.FORMULA, ligand_chain.AUTH_ASYM_ID, ligand_relation.AUTH_SEQ_ID, 
+    ligand_relation.STRUCT_ASYM_ID, ligand_site_relation.SYMMETRY_SYMBOL, ligand_entity.ID, ligand_relation.RES_ID ORDER BY site.ID
     """
 
     mappings = list(graph.run(query, parameters= {
@@ -460,8 +477,8 @@ def get_binding_sites_for_entry(entry_id):
     query = """
     MATCH (entry:Entry {ID:$entry_id})-[relation:HAS_BINDING_SITE]->(site:Binding_Site)
     MATCH (entry)-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[res_relation:IS_IN_BINDING_SITE]->(site)
-    WITH site, pdb_res, res_relation
-    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, pdb_res.ID, res_relation.ENTITY_ID, pdb_res.CHEM_COMP_ID, res_relation.AUTH_ASYM_ID, 
+    WITH entity, site, pdb_res, res_relation
+    RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, pdb_res.ID, entity.ID, pdb_res.CHEM_COMP_ID, res_relation.AUTH_ASYM_ID, 
     res_relation.AUTH_SEQ_ID, res_relation.STRUCT_ASYM_ID, res_relation.SYMMETRY_SYMBOL ORDER BY site.ID
     """
 
@@ -547,7 +564,7 @@ def get_binding_sites_for_uniprot(uniprot_accession):
         (unp_res_id, unp_res_code, pdb_res_id, pdb_res_code, entity_id, entry_id) = mapping
         print(unp_res_id, unp_res_code, pdb_res_id, pdb_res_code, entity_id, entry_id)
 
-        residue_result = get_mappings_for_residue_binding_site(entry_id, entity_id, pdb_res_id)
+        residue_result = get_mappings_for_residue_binding_site(entry_id, entity_id, pdb_res_id, False)
 
         temp_result = {
             "unp_res_id": unp_res_id,
@@ -564,6 +581,99 @@ def get_binding_sites_for_uniprot(uniprot_accession):
     return jsonify({
         uniprot_accession: final_result
     })
+
+
+@app.route('/api/mappings/secondary_structures/<string:pdb_id>')
+def get_secondary_structures(pdb_id):
+    
+    # get helices
+    query = """
+    MATCH (n:Entry {ID:$pdb_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[rel:IS_IN_CHAIN {OBSERVED:'Y', IS_IN_HELIX:'Y'}]->(chain:Chain)
+    RETURN entity.ID AS entity, chain.AUTH_ASYM_ID AS chain_id, chain.STRUCT_ASYM_ID AS struct_asym_id, rel.HELIX_SEGMENT AS segment, MIN(pdb_res.ID) AS pdb_start, MAX(pdb_res.ID) AS pdb_end ORDER BY toInteger(rel.HELIX_SEGMENT)
+    """
+
+    mappings = list(graph.run(query, parameters= {
+        'pdb_id': str(pdb_id)
+    }))
+
+    residue_dict = {}
+    chain_dict = {}
+
+    for mapping in mappings:
+        (entity_id, auth_asym_id, struct_asym_id, segment, pdb_start, pdb_end) = mapping
+
+    
+        if(chain_dict.get(entity_id) is None):
+            chain_dict[entity_id] = [(auth_asym_id, struct_asym_id)]
+        else:
+            chain_dict[entity_id].append((auth_asym_id, struct_asym_id))
+        
+        if(residue_dict.get((entity_id, auth_asym_id, struct_asym_id)) is None):
+            residue_dict[(entity_id, auth_asym_id, struct_asym_id)] = [(pdb_start, pdb_end)]
+        else:
+            residue_dict[(entity_id, auth_asym_id, struct_asym_id)].append((pdb_start, pdb_end))
+   
+    # get strands
+    query = """
+    MATCH (n:Entry {ID:$pdb_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain) 
+    WHERE EXISTS(rel.SHEETS)
+    WITH rel.SHEETS AS sheets, entity, chain, toInteger(pdb_res.ID) as pdb_res
+    UNWIND sheets AS sheet
+    RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, sheet, pdb_res ORDER BY toInteger(entity.ID), chain.AUTH_ASYM_ID, 
+    chain.STRUCT_ASYM_ID, pdb_res
+    """
+
+    mappings = list(graph.run(query, parameters= {
+        'pdb_id': str(pdb_id)
+    }))
+
+    final_result = {
+        pdb_id: {
+            "molecules": []
+        }
+    }
+
+    for key in chain_dict.keys():
+
+        temp_list = {
+                "entity_id": key,
+                "chains": []
+            }
+
+        chain_index = -1
+        for chain in list(set(chain_dict[key])):
+            (chain_id, struct_id) = chain
+            chain_index += 1
+
+            temp_list["chains"].append({
+                "chain_id": chain_id,
+                "struct_asym_id": struct_id,
+                "secondary_structure": {
+                    "helices": []
+                }
+            })
+            
+            for residue in residue_dict[(key, chain_id, struct_id)]:
+
+                pdb_start, pdb_end = residue
+
+                temp_list["chains"][chain_index]["secondary_structure"]["helices"].append({
+                    "start": {
+                        "residue_number": int(pdb_start),
+                        "author_residue_number": "",
+                        "author_insertion_code": None
+                    },
+                    "end": {
+                        "residue_number": int(pdb_end),
+                        "author_residue_number": "",
+                        "author_insertion_code": None
+                    },
+                })
+
+        final_result[pdb_id]["molecules"].append(temp_list)
+
+
+    return jsonify(final_result)
 
 @app.route('/api/mappings/unipdb/<string:uniprot_accession>')
 def get_unipdb(uniprot_accession):
@@ -676,7 +786,7 @@ def get_mappings_for_unp_residue_pfam(uniprot_accession):
 
     query = """
     MATCH (unp:UniProt {ACCESSION:$accession})-[:HAS_UNP_RESIDUE]->(unp_res:UNP_Residue)-[:IS_IN_PFAM]->(pfam:Pfam)
-    WITH pfam.ACCESSION AS pfamAccession, pfam.NAME AS pfamName, pfam.DESCRIPTION AS pfamDesc, toInteger(unp_res.ID) AS unpRes
+    WITH pfam.PFAM_ACCESSION AS pfamAccession, pfam.NAME AS pfamName, pfam.DESCRIPTION AS pfamDesc, toInteger(unp_res.ID) AS unpRes
     RETURN pfamAccession, pfamName, pfamDesc, min(unpRes) AS unpStart, max(unpRes) AS unpEnd
     """
 
