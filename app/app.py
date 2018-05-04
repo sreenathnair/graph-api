@@ -1,6 +1,10 @@
 from flask import Flask, jsonify
 from .model import graph
 from .amino_acid_codes import amino_acid_codes
+import re
+from .utils import find_ranges
+import more_itertools as mit
+import json
 
 app = Flask(__name__)
 
@@ -585,47 +589,45 @@ def get_binding_sites_for_uniprot(uniprot_accession):
 
 @app.route('/api/mappings/secondary_structures/<string:pdb_id>')
 def get_secondary_structures(pdb_id):
-    
-    # get helices
+
     query = """
-    MATCH (n:Entry {ID:$pdb_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[rel:IS_IN_CHAIN {OBSERVED:'Y', IS_IN_HELIX:'Y'}]->(chain:Chain)
-    RETURN entity.ID AS entity, chain.AUTH_ASYM_ID AS chain_id, chain.STRUCT_ASYM_ID AS struct_asym_id, rel.HELIX_SEGMENT AS segment, MIN(pdb_res.ID) AS pdb_start, MAX(pdb_res.ID) AS pdb_end ORDER BY toInteger(rel.HELIX_SEGMENT)
+    MATCH (n:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[rel:IS_IN_CHAIN]->(chain:Chain)
+    WHERE rel.OBSERVED='Y' AND (rel.IS_IN_HELIX='Y' OR exists(rel.SHEETS))
+    RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, rel.HELIX_SEGMENT, rel.SHEETS, toInteger(pdb_res.ID), toInteger(rel.AUTH_SEQ_ID) ORDER by toInteger(pdb_res.ID)
     """
 
     mappings = list(graph.run(query, parameters= {
-        'pdb_id': str(pdb_id)
+        'entry_id': str(pdb_id)
     }))
 
-    residue_dict = {}
-    chain_dict = {}
+    dict_helices = {}
+    dict_strands_res_id = {}
+    dict_strands_res_auth_seq_id = {}
+    dict_struct_asym_id = {}
 
     for mapping in mappings:
-        (entity_id, auth_asym_id, struct_asym_id, segment, pdb_start, pdb_end) = mapping
+        (entity_id, auth_asym_id, struct_asym_id, helix_segment, sheets, pdb_residue, auth_seq_id) = mapping
 
-    
-        if(chain_dict.get(entity_id) is None):
-            chain_dict[entity_id] = [(auth_asym_id, struct_asym_id)]
-        else:
-            chain_dict[entity_id].append((auth_asym_id, struct_asym_id))
-        
-        if(residue_dict.get((entity_id, auth_asym_id, struct_asym_id)) is None):
-            residue_dict[(entity_id, auth_asym_id, struct_asym_id)] = [(pdb_start, pdb_end)]
-        else:
-            residue_dict[(entity_id, auth_asym_id, struct_asym_id)].append((pdb_start, pdb_end))
-   
-    # get strands
-    query = """
-    MATCH (n:Entry {ID:$pdb_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain) 
-    WHERE EXISTS(rel.SHEETS)
-    WITH rel.SHEETS AS sheets, entity, chain, toInteger(pdb_res.ID) as pdb_res
-    UNWIND sheets AS sheet
-    RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, sheet, pdb_res ORDER BY toInteger(entity.ID), chain.AUTH_ASYM_ID, 
-    chain.STRUCT_ASYM_ID, pdb_res
-    """
+        #setting dictionary of helices
+        if(helix_segment != '0'):
+            if(dict_helices.get((entity_id, struct_asym_id, helix_segment)) is None):
+                dict_helices[(entity_id, struct_asym_id, helix_segment)] = [(pdb_residue, auth_seq_id)]
+            else:
+                dict_helices[(entity_id, struct_asym_id, helix_segment)].append((pdb_residue, auth_seq_id))
 
-    mappings = list(graph.run(query, parameters= {
-        'pdb_id': str(pdb_id)
-    }))
+        #setting dictionary of strands
+        if(sheets is not None):
+            sheets = re.sub(r'[\[\]]','', sheets).split(',')
+            
+            for sheet in sheets:
+                if(dict_strands_res_id.get((entity_id, struct_asym_id, sheet)) is None):
+                    dict_strands_res_id[(entity_id, struct_asym_id, sheet)] = [pdb_residue]
+                    dict_strands_res_auth_seq_id[(entity_id, struct_asym_id, sheet)] = [auth_seq_id]
+                else:
+                    dict_strands_res_id[(entity_id, struct_asym_id, sheet)].append(pdb_residue)
+                    dict_strands_res_auth_seq_id[(entity_id, struct_asym_id, sheet)].append(auth_seq_id)
+
+        dict_struct_asym_id[struct_asym_id] = auth_asym_id
 
     final_result = {
         pdb_id: {
@@ -633,47 +635,105 @@ def get_secondary_structures(pdb_id):
         }
     }
 
-    for key in chain_dict.keys():
+    dict_helices_chain = {}
+    dict_entity = {}
+    
+    for key in dict_helices.keys():
+        (entity_id, struct_asym_id, helix_segment) = key
 
-        temp_list = {
-                "entity_id": key,
-                "chains": []
-            }
-
-        chain_index = -1
-        for chain in list(set(chain_dict[key])):
-            (chain_id, struct_id) = chain
-            chain_index += 1
-
-            temp_list["chains"].append({
-                "chain_id": chain_id,
-                "struct_asym_id": struct_id,
-                "secondary_structure": {
-                    "helices": []
+        pdb_start_id, pdb_start_auth = dict_helices.get(key)[0]
+        pdb_end_id, pdb_end_auth = dict_helices.get(key)[-1]
+        temp_segment = {
+                "start": {
+                    "author_residue_number": int(pdb_start_auth),
+                    "author_insertion_code": None,
+                    "residue_number": int(pdb_start_id)
+                },
+                "end": {
+                    "author_residue_number": int(pdb_end_auth),
+                    "author_insertion_code": None,
+                    "residue_number": int(pdb_end_id)
                 }
-            })
+            }
+        if(dict_helices_chain.get((entity_id, struct_asym_id)) is None):
+            dict_helices_chain[(entity_id, struct_asym_id)] = [temp_segment]
+        else:
+            dict_helices_chain[(entity_id, struct_asym_id)].append(temp_segment)
+
+        if(dict_entity.get(entity_id) is None):
+            dict_entity[entity_id] = set(list(struct_asym_id))
+        else:
+            dict_entity[entity_id].add(struct_asym_id)
+
+    dict_strand_chain = {}
+
+    for key in dict_strands_res_id.keys():
+        (entity_id, struct_asym_id, sheet) = key
+        res_id_list = []
+        res_auth_seq_list = []
+
+        for group in mit.consecutive_groups(dict_strands_res_id[key]):
+            element = list(group)
+            pdb_start = element[0]
+            pdb_end = element[-1]
+            res_id_list.append((pdb_start, pdb_end))
+
+        for group in mit.consecutive_groups(dict_strands_res_auth_seq_id[key]):
+            element = list(group)
+            pdb_start = element[0]
+            pdb_end = element[-1]
+            res_auth_seq_list.append((pdb_start, pdb_end))
+        
+        for incr in range(len(res_id_list)):
+            temp_strand = {
+                "start": {
+                    "author_residue_number": int(res_auth_seq_list[incr][0]),
+                    "author_insertion_code": None,
+                    "residue_number": int(res_id_list[incr][0])
+                },
+                "end": {
+                    "author_residue_number": int(res_auth_seq_list[incr][1]),
+                    "author_insertion_code": None,
+                    "residue_number": int(res_id_list[incr][1])
+                },
+                "sheet_id": sheet
+            }
+            incr += 1
+
+            if(dict_strand_chain.get((entity_id, struct_asym_id)) is None):
+                dict_strand_chain[(entity_id, struct_asym_id)] = [temp_strand]
+            else:
+                dict_strand_chain[(entity_id, struct_asym_id)].append(temp_strand)
+
+
+    for entity in dict_entity.keys():
+        temp_entity = {
+            "entity_id": entity,
+            "chains": []
+        }
+        print(dict_entity[entity])
+        for chain in dict_entity[entity]:
+            print('chain->', chain)
+            temp_chain = {
+                "chain_id": dict_struct_asym_id[chain],
+                "struct_asym_id": chain,
+                "secondary_structure": {
+                    "helices": [],
+                    "strands": []
+                }
+            }
+            for helix in dict_helices_chain[(entity, chain)]:
+                temp_chain["secondary_structure"]["helices"].append(helix)
+            for strand in dict_strand_chain[(entity, chain)]:
+                temp_chain["secondary_structure"]["strands"].append(strand)
             
-            for residue in residue_dict[(key, chain_id, struct_id)]:
-
-                pdb_start, pdb_end = residue
-
-                temp_list["chains"][chain_index]["secondary_structure"]["helices"].append({
-                    "start": {
-                        "residue_number": int(pdb_start),
-                        "author_residue_number": "",
-                        "author_insertion_code": None
-                    },
-                    "end": {
-                        "residue_number": int(pdb_end),
-                        "author_residue_number": "",
-                        "author_insertion_code": None
-                    },
-                })
-
-        final_result[pdb_id]["molecules"].append(temp_list)
-
-
+            temp_entity["chains"].append(temp_chain)
+        
+        final_result[pdb_id]["molecules"].append(temp_entity)
+    
     return jsonify(final_result)
+
+   
 
 @app.route('/api/mappings/unipdb/<string:uniprot_accession>')
 def get_unipdb(uniprot_accession):
