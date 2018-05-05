@@ -304,9 +304,9 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, s
         MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity {ID:$entity_id})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residue})-[res_relation:IS_IN_BINDING_SITE]->
         (site:Binding_Site)
         WITH site, pdb_res
-        MATCH (site)-[bound_relation:BOUNDED_BY]->(boundLigand:Ligand)
-        RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, boundLigand.ID, boundLigand.NAME, boundLigand.FORMULA, bound_relation.AUTH_ASYM_ID, bound_relation.STRUCT_ASYM_ID, 
-        bound_relation.AUTH_SEQ_ID, bound_relation.ENTITY_ID, bound_relation.RESIDUE_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
+        MATCH (site)-[bound_relation:BOUNDED_BY]->(boundChain:Chain)<-[entity_chain_rel:CONTAINS_CHAIN]-(entity:Entity)-[entity_lig_rel:IS_AN_INSTANCE_OF]->(ligand:Ligand)
+        RETURN site.ID, site.DETAILS, site.EVIDENCE_CODE, ligand.ID, ligand.NAME, ligand.FORMULA, boundChain.AUTH_ASYM_ID, boundChain.STRUCT_ASYM_ID, 
+        entity_chain_rel.AUTH_SEQ_ID, entity.ID, entity_chain_rel.RES_ID, pdb_res.ID, pdb_res.CHEM_COMP_ID ORDER BY site.ID
         """
 
 
@@ -566,7 +566,6 @@ def get_binding_sites_for_uniprot(uniprot_accession):
 
     for mapping in mappings:
         (unp_res_id, unp_res_code, pdb_res_id, pdb_res_code, entity_id, entry_id) = mapping
-        print(unp_res_id, unp_res_code, pdb_res_id, pdb_res_code, entity_id, entry_id)
 
         residue_result = get_mappings_for_residue_binding_site(entry_id, entity_id, pdb_res_id, False)
 
@@ -711,9 +710,7 @@ def get_secondary_structures(pdb_id):
             "entity_id": entity,
             "chains": []
         }
-        print(dict_entity[entity])
         for chain in dict_entity[entity]:
-            print('chain->', chain)
             temp_chain = {
                 "chain_id": dict_struct_asym_id[chain],
                 "struct_asym_id": chain,
