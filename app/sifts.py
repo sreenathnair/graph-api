@@ -56,7 +56,7 @@ def get_uniprot(entry_id, graph):
         incr += 1
 
     api_result = {}
-        
+
     for accession in unp_map.keys():
 
         api_result[accession] = {
@@ -100,8 +100,114 @@ def get_uniprot(entry_id, graph):
     return api_result
 
 
+def get_uniprot_segments(entry_id, graph):
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[r:MAP_TO_UNIPROT_RESIDUE]->
+    (unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt),
+    (pdb_res)-[chain_rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain)
+    RETURN toInteger(entity.ID) as entityId, unp.ACCESSION, unp.NAME, toInteger(pdb_res.ID) as pdbResId, toInteger(unp_res.ID) as unpResId, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID,
+    toInteger(chain_rel.AUTH_SEQ_ID) as auth_seq_id order by toInteger(unp_res.ID)
+    """
+
+    dict_unp = {}
+    dict_pdb_res = {}
+    dict_unp_res = {}
+    dict_auth_seq_id = {}
+    mappings = list(graph.run(query, entry_id=entry_id))
+
+    for mapping in mappings:
+        (entity_id, unp_accession, unp_name, pdb_res_id, unp_res_id,
+         auth_asym_id, struct_asym_id, auth_seq_id) = mapping
+        key = (entity_id, unp_accession, unp_name,
+               auth_asym_id, struct_asym_id)
+
+        if(dict_unp.get(unp_accession) is None):
+            dict_unp[unp_accession] = {
+                "identifier": unp_name,
+                "name": unp_name,
+                "mappings": []
+            }
+
+        if(dict_pdb_res.get(key) is None):
+            dict_pdb_res[key] = [pdb_res_id]
+            dict_unp_res[key] = [unp_res_id]
+            dict_auth_seq_id[key] = [auth_seq_id]
+        else:
+            dict_pdb_res[key].append(pdb_res_id)
+            dict_unp_res[key].append(unp_res_id)
+            dict_auth_seq_id[key].append(auth_seq_id)
+
+
+    for key in dict_pdb_res.keys():
+
+        (entity_id, unp_accession, unp_name, auth_asym_id, struct_asym_id) = key
+
+        temp_list = []
+        for group in mit.consecutive_groups(dict_pdb_res[key]):
+            group = list(group)
+            temp_list.append((group[0], group[-1]))
+        dict_pdb_res[key] = temp_list
+
+        # dont clear since it still holds the reference, so create new
+        del temp_list
+        temp_list = []
+
+        for group in mit.consecutive_groups(dict_unp_res[key]):
+            group = list(group)
+            temp_list.append((group[0], group[-1]))
+        dict_unp_res[key] = temp_list
+
+        # dont clear since it still holds the reference, so create new
+        del temp_list
+        temp_list = []
+
+        for group in mit.consecutive_groups(dict_auth_seq_id[key]):
+            group = list(group)
+            temp_list.append((group[0], group[-1]))
+        dict_auth_seq_id[key] = temp_list
+
+        # dont clear since it still holds the reference, so create new
+        del temp_list
+        temp_list = []
+
+    api_result = {}
+
+    for key in dict_pdb_res.keys():
+
+        (entity_id, unp_accession, unp_name, auth_asym_id, struct_asym_id) = key
+
+        api_result[unp_accession] = dict_unp[unp_accession]
+
+        incr = 0
+
+        while(incr < len(dict_pdb_res[key])):
+
+            api_result[unp_accession]["mappings"].append({
+                "start": {
+                    "author_residue_number": dict_auth_seq_id[key][incr][0],
+                    "residue_number": dict_pdb_res[key][incr][0],
+                    "author_insertion_code": ""
+                },
+                "end": {
+                    "author_residue_number": dict_auth_seq_id[key][incr][-1],
+                    "residue_number": dict_pdb_res[key][incr][-1],
+                    "author_insertion_code": ""
+                },
+                "unp_start": dict_unp_res[key][incr][0],
+                "unp_end": dict_unp_res[key][incr][-1],
+                "entity_id": entity_id,
+                "chain_id": auth_asym_id,
+                "struct_asym_id": struct_asym_id
+            })
+
+            incr += 1
+
+    return api_result
+
+
 def get_pfam(entry_id, graph):
-    
+
     query = """
     MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)-[:IS_IN_PFAM]->(pfam:Pfam), 
     (pdb_res)-[chain_relation:IS_IN_CHAIN]->(chain:Chain)
@@ -116,10 +222,11 @@ def get_pfam(entry_id, graph):
 
     for mapping in mappings:
 
-        (entity_id, auth_asym_id, struct_asym_id, res_id, auth_seq_id, pfam_accession, desc) = mapping
+        (entity_id, auth_asym_id, struct_asym_id, res_id,
+         auth_seq_id, pfam_accession, desc) = mapping
 
         if(dict_pfam.get(pfam_accession) is None):
-            
+
             api_result[pfam_accession] = {
                 "identifier": desc,
                 "description": desc,
@@ -140,7 +247,7 @@ def get_pfam(entry_id, graph):
         (entity_id, auth_asym_id, struct_asym_id, pfam_accession) = key
         (start_res_id, start_auth_seq_id) = dict_pfam_mappings[key][0]
         (end_res_id, end_auth_seq_id) = dict_pfam_mappings[key][-1]
-        
+
         api_result[pfam_accession]["mappings"].append({
             "entity_id": int(entity_id),
             "chain_id": auth_asym_id,
@@ -157,8 +264,8 @@ def get_pfam(entry_id, graph):
             }
         })
 
-
     return api_result
+
 
 def get_interpro(entry_id, graph):
 
@@ -309,7 +416,7 @@ def get_scop(entry_id, graph):
     """
 
     api_result = {}
-        
+
     list_sunid = []
     dict_scop = {}
     mappings = list(graph.run(query, entry_id=entry_id))
@@ -317,7 +424,7 @@ def get_scop(entry_id, graph):
 
     for mapping in mappings:
         (sunid, desc, super_sunid, super_desc, fold_sunid, fold_desc, class_sunid, class_desc, sccs, scop_id, res_id, entity_id, auth_asym_id, struct_asym_id,
-        segment_id, auth_start, auth_end) = mapping
+         segment_id, auth_start, auth_end) = mapping
 
         if(sunid not in list_sunid):
 
@@ -339,7 +446,7 @@ def get_scop(entry_id, graph):
                 "description": desc,
                 "mappings": []
             }
-            
+
             list_sunid.append(sunid)
 
         key = (entity_id, auth_asym_id, struct_asym_id, scop_id, segment_id)
@@ -375,7 +482,7 @@ def get_scop(entry_id, graph):
             },
             "struct_asym_id": struct_asym_id
         }
-        
+
         api_result[sunid]["mappings"].append(temp_segment)
 
     return api_result
@@ -407,7 +514,6 @@ def get_go(entry_id, graph):
 
     mol_go_mappings = list(graph.run(mol_go_query, entry_id=entry_id))
 
-    
     go_dict = {}
 
     for mapping in bio_go_mappings:
@@ -453,7 +559,7 @@ def get_go(entry_id, graph):
                 "chain_id": auth_asym_id,
                 "struct_asym_id": struct_asym_id
             })
-    
+
     for mapping in mol_go_mappings:
         (entity_id, auth_asym_id, struct_asym_id, go_id, go_def, go_name) = mapping
 
@@ -475,8 +581,7 @@ def get_go(entry_id, graph):
                 "chain_id": auth_asym_id,
                 "struct_asym_id": struct_asym_id
             })
-        
-    
+
     api_result = {}
 
     for go_id in go_dict.keys():
@@ -497,12 +602,13 @@ def get_ec(entry_id, graph):
 
     for mapping in mappings:
 
-        (entity_id, auth_asym_id, struct_asym_id, ec_num, accepted_name, systematic_name, reaction, synonyms) = mapping
+        (entity_id, auth_asym_id, struct_asym_id, ec_num,
+         accepted_name, systematic_name, reaction, synonyms) = mapping
 
         # synonyms returns list as string, so converting them as list
-        synonyms = synonyms.translate({ord(c):'' for c in "[]' "}).split(',')
+        synonyms = synonyms.translate({ord(c): '' for c in "[]' "}).split(',')
 
-        #remove EC from ec_num
+        # remove EC from ec_num
         ec_num = ec_num.replace("EC ", "")
 
         if(dict_ec.get(ec_num) is None):
@@ -526,15 +632,15 @@ def get_ec(entry_id, graph):
             })
 
     api_result = {}
-        
+
     for key in dict_ec.keys():
         api_result[key] = dict_ec[key]
-    
+
     return api_result
 
 
 def get_uniprot_to_pfam(accession, graph):
-    
+
     query = """
     MATCH (unp:UniProt {ACCESSION:$accession})-[:HAS_UNP_RESIDUE]->(unp_res:UNP_Residue)-[:IS_IN_PFAM]->(pfam:Pfam)
     RETURN pfam.PFAM_ACCESSION, pfam.NAME, pfam.DESCRIPTION, toInteger(unp_res.ID) ORDER BY toInteger(unp_res.ID)
@@ -549,7 +655,7 @@ def get_uniprot_to_pfam(accession, graph):
         (pfam_accession, pfam_name, desc, res_id) = mapping
 
         if(dict_pfam.get(pfam_accession) is None):
-            
+
             api_result[pfam_accession] = {
                 "description": desc,
                 "identifier": desc,
@@ -562,12 +668,12 @@ def get_uniprot_to_pfam(accession, graph):
             dict_pfam[pfam_accession].append(res_id)
 
     for pfam_accession in dict_pfam.keys():
-        
+
         for group in mit.consecutive_groups(dict_pfam[pfam_accession]):
             group = list(group)
             api_result[pfam_accession]["mappings"].append({
                 "unp_start": group[0],
                 "unp_end": group[-1]
-            })    
+            })
 
     return api_result

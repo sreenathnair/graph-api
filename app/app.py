@@ -5,9 +5,11 @@ import re
 from .utils import find_ranges
 import more_itertools as mit
 import json
-from .sifts import get_uniprot, get_interpro, get_cath, get_scop, get_go, get_ec, get_pfam, get_uniprot_to_pfam
+from .sifts import get_uniprot, get_interpro, get_cath, get_scop, get_go, get_ec, get_pfam, get_uniprot_to_pfam, get_uniprot_segments
 from .residue import get_mappings_for_residue_uniprot, get_mappings_for_residue_cath, get_mappings_for_residue_interpro, get_mappings_for_residue_pfam, get_mappings_for_residue_scop
 from .residue import get_mappings_for_residue_binding_site
+from .compound import get_compound_atoms, get_compound_bonds, get_compound_in_pdb
+from .validation import get_validation_protein_ramachandran_sidechain_outliers
 
 app = Flask(__name__)
 
@@ -101,6 +103,15 @@ def get_uniprot_to_pfam_api(accession):
     return jsonify({
         accession: {
             "Pfam": get_uniprot_to_pfam(accession, graph)
+        }
+    })
+
+@app.route('/api/mappings/uniprot_segments/<string:entry_id>')
+def get_uniprot_segments_api(entry_id):
+
+    return jsonify({
+        entry_id: {
+            "UniProt": get_uniprot_segments(entry_id, graph)
         }
     })
 
@@ -617,3 +628,33 @@ def get_unipdb_residue(uniprot_accession, unp_res):
 
     return jsonify(final_result)
 
+
+@app.route('/api/pdb/compound/atoms/<string:chem_comp_id>')
+def get_compound_atoms_api(chem_comp_id):
+
+    return jsonify({
+        chem_comp_id: get_compound_atoms(chem_comp_id, graph)
+    })
+
+@app.route('/api/pdb/compound/bonds/<string:chem_comp_id>')
+def get_compound_bonds_api(chem_comp_id):
+
+    return jsonify({
+        chem_comp_id: get_compound_bonds(chem_comp_id, graph)
+    })
+
+
+@app.route('/api/pdb/compound/in_pdb/<string:chem_comp_id>')
+def get_compound_in_pdb_api(chem_comp_id):
+
+    return jsonify({
+        chem_comp_id: get_compound_in_pdb(chem_comp_id, graph)
+    })
+
+
+@app.route('/api/validation/protein-ramachandran-sidechain-outliers/entry/<string:entry_id>')
+def get_validation_protein_ramachandran_sidechain_outliers_api(entry_id):
+
+    return jsonify({
+        entry_id: get_validation_protein_ramachandran_sidechain_outliers(entry_id, graph)
+    })
