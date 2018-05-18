@@ -8,8 +8,8 @@ import json
 from .sifts import get_uniprot, get_interpro, get_cath, get_scop, get_go, get_ec, get_pfam, get_uniprot_to_pfam, get_uniprot_segments
 from .residue import get_mappings_for_residue_uniprot, get_mappings_for_residue_cath, get_mappings_for_residue_interpro, get_mappings_for_residue_pfam, get_mappings_for_residue_scop
 from .residue import get_mappings_for_residue_binding_site
-from .compound import get_compound_atoms, get_compound_bonds, get_compound_in_pdb
-from .validation import get_validation_protein_ramachandran_sidechain_outliers, get_validation_rama_sidechain_listing
+from .compound import get_compound_atoms, get_compound_bonds, get_compound_in_pdb, get_compound_co_factors, get_compound_co_factors_het
+from .validation import get_validation_protein_ramachandran_sidechain_outliers, get_validation_rama_sidechain_listing, get_validation_rna_pucker_suite_outliers
 
 app = Flask(__name__)
 
@@ -664,4 +664,26 @@ def get_validation_rama_sidechain_listing_api(entry_id):
 
     return jsonify({
         entry_id: get_validation_rama_sidechain_listing(entry_id, graph)
+    })
+
+
+@app.route('/api/validation/RNA_pucker_suite_outliers/entry/<string:entry_id>')
+def get_validation_rna_pucker_suite_outliers_api(entry_id):
+
+    return jsonify({
+        entry_id: get_validation_rna_pucker_suite_outliers(entry_id, graph)
+    })
+
+
+@app.route('/api/pdb/compound/cofactors')
+def get_compound_co_factors_api():
+
+    return jsonify(get_compound_co_factors(graph))
+
+
+@app.route('/api/pdb/compound/cofactors/het/<string:het_code>')
+def get_compound_co_factors_het_api(het_code):
+
+    return jsonify({
+        het_code: [get_compound_co_factors_het(het_code, graph)]
     })

@@ -140,3 +140,49 @@ def get_validation_rama_sidechain_listing(entry_id, graph):
         api_result["molecules"].append(entity_element)
     
     return api_result
+
+
+def get_validation_rna_pucker_suite_outliers(entry_id, graph):
+
+    # sample entry : 3j8g
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[rel:IS_IN_CHAIN]->(chain:Chain)
+    WHERE rel.RNA_SUITE IN ['NonRotameric','Triaged/NotBinned'] OR rel.RNA_PUCKER='outlier'
+    RETURN toInteger(entity.ID), chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, toInteger(pdb_res.ID), toInteger(rel.MODEL), rel.RNA_SUITE, rel.RNA_PUCKER, toInteger(rel.AUTH_SEQ_ID)
+    """
+
+    list_rna_pucker = []
+    list_rna_suite = []
+    mappings = list(graph.run(query, entry_id=entry_id))
+
+    for mapping in mappings:
+        (entity_id, auth_asym_id, struct_asym_id, res_id, model, rna_suite, rna_pucker, auth_seq_id) = mapping
+
+        if(rna_suite in ['NonRotameric','Triaged/NotBinned']):
+            list_rna_suite.append({
+                "model_id": model,
+                "entity_id": entity_id,
+                "residue_number": res_id,
+                "author_residue_number": auth_seq_id,
+                "chain_id": auth_asym_id,
+                "author_insertion_code": "",
+                "alt_code": "",
+                "struct_asym_id": struct_asym_id
+            })
+
+        if(rna_pucker == 'outlier'):
+            list_rna_pucker.append({
+                "model_id": model,
+                "entity_id": entity_id,
+                "residue_number": res_id,
+                "author_residue_number": auth_seq_id,
+                "chain_id": auth_asym_id,
+                "author_insertion_code": "",
+                "alt_code": "",
+                "struct_asym_id": struct_asym_id
+            })
+
+    return {
+        "pucker_outliers": [list_rna_pucker],
+        "suite_outliers": list_rna_suite
+    }

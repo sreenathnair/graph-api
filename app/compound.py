@@ -96,3 +96,56 @@ def get_compound_in_pdb(chem_comp_id, graph):
         return mappings[0][0]
     else:
         return []
+
+
+def get_compound_co_factors(graph):
+
+    query = """
+    MATCH (co:CO_Factor_Class)-[:HAS_EC]->(ec:EC), (co)<-[:ACTS_AS_COFACTOR]-(ligand:Ligand)
+    RETURN co.COFACTOR_ID, co.NAME, collect(DISTINCT split(ec.EC_NUM,' ')[1]) as ec, collect(DISTINCT ligand.ID) as cofactors
+    """
+
+    api_result = {}
+
+    mappings = list(graph.run(query))
+
+    for mapping in mappings:
+        (cofactor_class, cofactor_class_name, list_ec, list_cofactors) = mapping
+
+        api_result[cofactor_class_name] = [{
+            "EC": list_ec,
+            "cofactors": list_cofactors
+        }]
+
+    return api_result
+
+def get_compound_co_factors_het(het_code, graph):
+
+    query = """
+    MATCH (src_ligand:Ligand {ID:'TDP'})-[:ACTS_AS_COFACTOR]->(co:CO_Factor_Class)<-[:ACTS_AS_COFACTOR]->(dest_ligand:Ligand) WHERE src_ligand.ID <> dest_ligand.ID
+    RETURN co.NAME, src_ligand.NAME, dest_ligand.ID, dest_ligand.NAME
+    """
+
+    api_result = {
+        "acts_as": "cofactor",
+        "chem_comp_ids": []
+    }
+    mappings = list(graph.run(query, het_code=het_code))
+    ligand_name = None
+
+    for mapping in mappings:
+        (co_name, src_ligand_name, dest_ligand_id, dest_ligand_name) = mapping
+        ligand_name = src_ligand_name
+
+        api_result["class"] = co_name
+        api_result["chem_comp_ids"].append({
+            "chem_comp_id": dest_ligand_id,
+            "name": dest_ligand_name
+        })
+
+    api_result["chem_comp_ids"].append({
+        "chem_comp_id": het_code,
+        "name": ligand_name
+    })
+
+    return api_result
