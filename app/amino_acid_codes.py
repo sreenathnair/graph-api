@@ -27,6 +27,12 @@ amino_acid_codes = {
     'GLX': ('Z', 'Glutamic acid or Glutamine'),
     'XAA': ('X', 'Any amino acid'),
     'XLE': ('J', 'Leucine or Isoleucine'),
-    'TERM':	('', 'termination codon')
+    'TERM':	('', 'termination codon'),
+    'CCS': ('CCS', 'CCS'),
+    'CME': ('CME', 'CME'),
+    'MLZ': ('MLZ', 'MLZ'),
+    'CSO': ('CSO', 'CSO'),
+    'TPO': ('TPO', 'TPO'),
+    'SCH': ('SCH', 'SCH')
 
 }
