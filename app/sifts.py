@@ -677,3 +677,81 @@ def get_uniprot_to_pfam(accession, graph):
             })
 
     return api_result
+
+
+def get_isoforms(entry_id, graph, mapping_type):
+
+    best_query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[unp_rel:HAS_UNIPROT {BEST_MAPPING:'1'}]->(unp:UniProt)-[:HAS_UNP_RESIDUE]->(unp_res:UNP_Residue)<-[:MAP_TO_UNIPROT_RESIDUE]-(pdb_res:PDB_Residue)<-[:HAS_PDB_RESIDUE]-(entity)
+    MATCH (entity)-[:CONTAINS_CHAIN]->(chain:Chain)<-[chain_rel:IS_IN_CHAIN]-(pdb_res)
+    RETURN unp.ACCESSION, unp.NAME, entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, chain_rel.AUTH_SEQ_ID, chain_rel.OBSERVED_RATIO, pdb_res.ID, unp_res.ID, unp_rel.IDENTITY ORDER BY toInteger(pdb_res.ID)
+    """
+
+    all_query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[unp_rel:HAS_UNIPROT]->(unp:UniProt)-[:HAS_UNP_RESIDUE]->(unp_res:UNP_Residue)<-[:MAP_TO_UNIPROT_RESIDUE]-(pdb_res:PDB_Residue)<-[:HAS_PDB_RESIDUE]-(entity)
+    MATCH (entity)-[:CONTAINS_CHAIN]->(chain:Chain)<-[chain_rel:IS_IN_CHAIN]-(pdb_res)
+    RETURN unp.ACCESSION, unp.NAME, entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, chain_rel.AUTH_SEQ_ID, chain_rel.OBSERVED_RATIO, pdb_res.ID, unp_res.ID, unp_rel.IDENTITY ORDER BY toInteger(pdb_res.ID)
+    """
+
+    if(mapping_type == 'B'):
+        mappings = list(graph.run(best_query, entry_id=entry_id))
+    elif(mapping_type == 'A'):
+        mappings = list(graph.run(all_query, entry_id=entry_id))
+
+    dict_unp_master = {}
+    dict_mappings = {}
+
+    api_result = {
+        "UniProt": {}
+    }
+
+    for mapping in mappings:
+        (accession, name, entity_id, auth_asym_id, struct_asym_id, auth_seq_id, observed_ratio, pdb_res_id, unp_res_id, identity) = mapping
+
+        # AUTH_SEQ_ID is populated from RESIDUE not SIFTS_XREF_RESIDUE, AUTH_SEQ_ID is null if OBSERVED_RATIO is 0
+        if(observed_ratio == '0.0'):
+            auth_seq_id = None
+
+        if(dict_unp_master.get(accession) is None):
+            dict_unp_master[accession] = True
+            api_result["UniProt"][accession] = {
+                "identifier": name,
+                "name": name,
+                "mappings": []
+            }
+        
+        key = (accession, entity_id, auth_asym_id, struct_asym_id, identity)
+
+        if(dict_mappings.get(key) is None):
+            dict_mappings[key] = [(auth_seq_id, pdb_res_id, unp_res_id)]
+        else:
+            dict_mappings[key].append((auth_seq_id, pdb_res_id, unp_res_id))
+
+    for key in dict_mappings.keys():
+        (accession, entity_id, auth_asym_id, struct_asym_id, identity) = key
+
+        start = dict_mappings[key][0]
+        end = dict_mappings[key][-1]
+
+        api_result["UniProt"][accession]["mappings"].append({
+            "entity_id": int(entity_id),
+            "chain_id": auth_asym_id,
+            "struct_asym_id": struct_asym_id,
+            "pdb_start": int(start[1]),
+            "pdb_end": int(end[1]),
+            "start": {
+                "author_residue_number": None if start[0] is None else int(start[0]),
+                "author_insertion_code": "",
+                "residue_number": int(start[1])
+            },
+            "end": {
+                "author_residue_number": None if end[0] is None else int(end[0]),
+                "author_insertion_code": "",
+                "residue_number": int(end[1])
+            },
+            "identity": float("%.3f" % float(identity)),
+            "unp_start": int(start[2]),
+            "unp_end": int(end[2])
+        })
+
+    return api_result

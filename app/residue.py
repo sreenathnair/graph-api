@@ -247,16 +247,16 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, s
         if(site_boundligand_dict.get(key) is not None):
             for result in list(set(site_boundligand_dict[key])):
                 (bound_ligand, bound_ligand_name, bound_ligand_formula, bound_auth_asym_id, bound_struct_asym_id, bound_auth_seq_id, bound_entity_id, bound_residue_id) = result
-                
-                temp["ligand_residues"].append({
-                    "entity_id": int(bound_entity_id),
-                    "residue_number": int(bound_residue_id),
-                    "author_insertion_code": "null",
-                    "chain_id": bound_auth_asym_id,
-                    "author_residue_number": int(bound_auth_seq_id),
-                    "chem_comp_id": bound_ligand,
-                    "struct_asym_id": bound_struct_asym_id
-                })
+                if(bound_residue_id is not None):
+                    temp["ligand_residues"].append({
+                        "entity_id": int(bound_entity_id),
+                        "residue_number": int(bound_residue_id),
+                        "author_insertion_code": "null",
+                        "chain_id": bound_auth_asym_id,
+                        "author_residue_number": int(bound_auth_seq_id),
+                        "chem_comp_id": bound_ligand,
+                        "struct_asym_id": bound_struct_asym_id
+                    })
         
         if(site_residues is True):
             if(site_ligand_dict.get(key) is not None):

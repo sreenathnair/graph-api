@@ -183,6 +183,6 @@ def get_validation_rna_pucker_suite_outliers(entry_id, graph):
             })
 
     return {
-        "pucker_outliers": [list_rna_pucker],
+        "pucker_outliers": list_rna_pucker,
         "suite_outliers": list_rna_suite
     }
