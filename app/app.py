@@ -10,13 +10,16 @@ from .residue import get_mappings_for_residue_uniprot, get_mappings_for_residue_
 from .residue import get_mappings_for_residue_binding_site
 from .compound import get_compound_atoms, get_compound_bonds, get_compound_in_pdb, get_compound_co_factors, get_compound_co_factors_het
 from .validation import get_validation_protein_ramachandran_sidechain_outliers, get_validation_rama_sidechain_listing, get_validation_rna_pucker_suite_outliers
+from .validation import get_validation_global_percentiles, get_validation_summary_quality_scores, get_validation_key_validation_stats, get_validation_xray_refine_data_stats
 from werkzeug.contrib.cache import SimpleCache
 from .pdb import get_binding_sites_for_entry, get_binding_sites_for_uniprot, get_secondary_structures
 from .uniprot import get_unipdb, get_unipdb_residue
+from flask import Response
 
 app = Flask(__name__)
 
 cache = SimpleCache()
+CACHE_ENABLED = False
 cache_timeout = 5 * 60
 
 @app.route('/')
@@ -435,3 +438,64 @@ def get_compound_co_factors_het_api(het_code):
         cache.set('get_compound_co_factors_het_api:{}'.format(het_code), cache_result, timeout=cache_timeout)
     
     return jsonify(cache_result)
+
+
+@app.route('/api/validation/global-percentiles/entry/<string:entry_id>')
+def get_validation_global_percentiles_api(entry_id):
+
+    cache_result = cache.get('get_validation_global_percentiles_api:{}'.format(entry_id))
+
+    if(cache_result is None):
+        cache_result = {
+            entry_id: get_validation_global_percentiles(entry_id, graph)
+        }
+        cache.set('get_validation_global_percentiles_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
+    
+    return jsonify(cache_result)
+
+
+@app.route('/api/validation/summary_quality_scores/entry/<string:entry_id>')
+def get_validation_summary_quality_scores_api(entry_id):
+
+    cache_result = cache.get('get_validation_summary_quality_scores_api:{}'.format(entry_id))
+
+    if(cache_result is None):
+        cache_result = {
+            entry_id: get_validation_summary_quality_scores(entry_id, graph)
+        }
+        cache.set('get_validation_summary_quality_scores_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
+    
+    return jsonify(cache_result)
+
+
+@app.route('/api/validation/key_validation_stats/entry/<string:entry_id>')
+def get_validation_key_validation_stats_api(entry_id):
+
+    cache_result = cache.get('get_validation_key_validation_stats_api:{}'.format(entry_id))
+
+    if(cache_result is None):
+        cache_result = {
+            entry_id: get_validation_key_validation_stats(entry_id, graph)
+        }
+        cache.set('get_validation_key_validation_stats_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
+    
+    return jsonify(cache_result)
+
+
+@app.route('/api/validation/xray_refine_data_stats/entry/<string:entry_id>')
+def get_validation_xray_refine_data_stats_api(entry_id):
+
+    cache_result = cache.get('get_validation_xray_refine_data_stats_api:{}'.format(entry_id))
+
+    if (not CACHE_ENABLED):
+        cache_result = None
+
+    if(cache_result is None):
+        response, response_status = get_validation_xray_refine_data_stats(entry_id, graph)
+        cache_result = {
+            entry_id: response
+        }
+        cache.set('get_validation_xray_refine_data_stats_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
+    
+    return jsonify(cache_result), response_status
+    

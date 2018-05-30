@@ -1,4 +1,7 @@
+from decimal import Decimal
 
+RSRZ_OUTLIER_CUTOFF = 2
+RNA_suite_not_nonRotameric = ["NotAvailable","Rotameric",None]
 
 def get_validation_protein_ramachandran_sidechain_outliers(entry_id, graph):
 
@@ -11,6 +14,9 @@ def get_validation_protein_ramachandran_sidechain_outliers(entry_id, graph):
     list_rama = []
     list_rota = []
     mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     for mapping in mappings:
 
@@ -43,7 +49,7 @@ def get_validation_protein_ramachandran_sidechain_outliers(entry_id, graph):
     return {
         "ramachandran_outliers": list_rama,
         "sidechain_outliers": list_rota
-    }
+    }, 200
 
 
 def get_validation_rama_sidechain_listing(entry_id, graph):
@@ -58,6 +64,9 @@ def get_validation_rama_sidechain_listing(entry_id, graph):
     list_entities = []
     dict_residues = {}
     mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     for mapping in mappings:
         (entity_id, auth_asym_id, struct_asym_id, model, psi, cis_peptide, res_id, auth_seq_id, rama, phi, chem_comp_id, rota) = mapping
@@ -139,7 +148,7 @@ def get_validation_rama_sidechain_listing(entry_id, graph):
 
         api_result["molecules"].append(entity_element)
     
-    return api_result
+    return api_result, 200
 
 
 def get_validation_rna_pucker_suite_outliers(entry_id, graph):
@@ -154,6 +163,9 @@ def get_validation_rna_pucker_suite_outliers(entry_id, graph):
     list_rna_pucker = []
     list_rna_suite = []
     mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     for mapping in mappings:
         (entity_id, auth_asym_id, struct_asym_id, res_id, model, rna_suite, rna_pucker, auth_seq_id) = mapping
@@ -185,4 +197,281 @@ def get_validation_rna_pucker_suite_outliers(entry_id, graph):
     return {
         "pucker_outliers": list_rna_pucker,
         "suite_outliers": list_rna_suite
+    }, 200
+
+def get_validation_global_percentiles(entry_id, graph):
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})
+    RETURN entry.ABS_PERCENTILE_PERCENT_RSRZ,entry.REL_PERCENTILE_PERCENT_RSRZ,entry.PERCENT_RSRZ_OUTLIERS, entry.REL_PERCENTILE_PERCENT_ROTA,entry.ABS_PERCENTILE_PERCENT_ROTA,
+    entry.PERCENT_ROTA_OUTLIERS,entry.REL_PERCENTILE_PERCENT_RAMA,entry.ABS_PERCENTILE_PERCENT_RAMA,entry.PERCENT_RAMA_OUTLIERS,entry.REL_PERCENTILE_CLASHSCORE,
+    entry.ABS_PERCENTILE_CLASHSCORE,entry.CLASHSCORE,entry.REL_PERCENTILE_DCC_RFREE,entry.ABS_PERCENTILE_DCC_RFREE,entry.DCC_RFREE,entry.ABS_PERCENTILE_RNA_SUITENESS,
+    entry.REL_PERCENTILE_RNA_SUITENESS,entry.RNA_SUITENESS
+    """
+
+    mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    api_result = {}
+
+    for mapping in mappings:
+        (abs_rsrz,rel_rsrz,raw_rsrz,rel_rota,abs_rota,raw_rota,rel_rama,abs_rama,raw_rama,rel_clash,abs_clash,raw_clash,rel_dcc,abs_dcc,raw_dcc,abs_rna,rel_rna,raw_rna) = mapping
+
+        if(rel_rsrz is not None):
+            api_result["percent-RSRZ-outliers"] = {
+                "relative": float("%.2f" % float(rel_rsrz)),
+                "rawvalue": float("%.2f" % float(raw_rsrz)),
+                "absolute": float("%.2f" % float(abs_rsrz))
+            }
+        if(rel_clash is not None):
+            api_result["clashscore"] = {
+                "relative": float("%.2f" % float(rel_clash)),
+                "rawvalue": float("%.2f" % float(raw_clash)),
+                "absolute": float("%.2f" % float(abs_clash))
+            }
+        if(rel_rota is not None):
+            api_result["percent-rota-outliers"] = {
+                "relative": float("%.2f" % float(rel_rota)),
+                "rawvalue": float("%.2f" % float(raw_rota)),
+                "absolute": float("%.2f" % float(abs_rota))
+            }
+        if(rel_rama is not None):
+            api_result["percent-rama-outliers"] = {
+                "relative": float("%.2f" % float(rel_rama)),
+                "rawvalue": float("%.2f" % float(raw_rama)),
+                "absolute": float("%.2f" % float(abs_rama))
+            }
+        if(rel_dcc is not None):
+            api_result["DCC_Rfree"] = {
+                "relative": float("%.2f" % float(rel_dcc)),
+                "rawvalue": float("%.2f" % float(raw_dcc)),
+                "absolute": float("%.2f" % float(abs_dcc))
+            }
+        if(rel_rna is not None):
+            api_result["RNAsuiteness"] = {
+                "relative": float("%.2f" % float(rel_rna)),
+                "rawvalue": float("%.2f" % float(raw_rna)),
+                "absolute": float("%.2f" % float(abs_rna))
+            }
+
+        # only 1 record is returned
+        return api_result, 200
+
+
+def get_validation_summary_quality_scores(entry_id, graph):
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:EXPERIMENT]->(method:Method)
+    RETURN entry.DATA_QUALITY,entry.OVERALL_QUALITY,entry.GEOMETRY_QUALITY,method.METHOD,method.METHOD_CLASS
+    """
+
+    mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    for mapping in mappings:
+
+        (data_quality, overall_quality, geo_quality, method, method_class) = mapping
+        
+        # only 1 record is returned
+        return {
+            "overall_quality": None if(overall_quality is None) else float("%.2f" % float(overall_quality)),
+            "geometry_quality": None if(geo_quality is None) else float("%.2f" % float(geo_quality)),
+            "experiment_data_available": True if (method == 'X-ray diffraction' and method_class == 'x-ray') else "unknown",
+            "data_quality": None if(data_quality is None) else float("%.2f" % float(data_quality))
+        }, 200
+
+def get_validation_key_validation_stats(entry_id, graph):
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)
+    OPTIONAL MATCH (pdb_res)-[:HAS_VALIDATION_DATA]->(val_bond:Val_Bond_Outlier)
+    OPTIONAL MATCH (pdb_res)-[:HAS_VALIDATION_DATA]->(val_angle:Val_Angle_Outlier)
+    RETURN entry.ANGLES_RMSZ,entry.NUM_ANGLES_RMSZ,entry.BONDS_RMSZ,entry.NUM_BONDS_RMSZ, count(val_bond) as num_val_bonds,count(val_angle) as num_val_angle
+    """
+
+    mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    angle_rmsz, num_angle_rmsz, bonds_rmsz, num_bonds_rmsz, num_bond_outliers, num_angle_outliers = mappings[0]
+    percent_bond_outliers = float((Decimal(num_bond_outliers) * Decimal(100.0) / Decimal(num_bonds_rmsz)))
+    percent_angle_outliers = float((Decimal(num_angle_outliers) * Decimal(100.0) / Decimal(num_angle_rmsz)))
+
+    api_result = {
+        "bonds": {
+            "rmsz":  float("%.2f" % float(bonds_rmsz)),
+            "num_checked": int(num_bonds_rmsz),
+            "percent_outliers": float("%.2f" % float(percent_bond_outliers)),
+            "num_outliers": int(num_bond_outliers)
+        },
+        "angles": {
+            "rmsz": float("%.2f" % float(angle_rmsz)),
+            "num_checked": int(num_angle_rmsz),
+            "percent_outliers": float("%.2f" % float(percent_angle_outliers)),
+            "num_outliers": int(num_angle_outliers)
+        }
     }
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[chain_rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain)
+    RETURN chain_rel.RAMA AS rama,chain_rel.ROTA AS rota,chain_rel.RSRZ AS rsrz,chain_rel.RNA_SUITE AS rna_suite,chain_rel.RNA_PUCKER AS rna_pucker
+    """
+
+    mappings = list(graph.run(query, entry_id=entry_id))
+    keys = ["rama", "rota", "rsrz", "rna_suite", "rna_pucker"]
+
+    for key in keys:
+        if(api_result.get(key) is None):
+            api_result[key] = {
+                "num_checked": 0,
+                "num_outliers": 0
+            }
+
+    for mapping in mappings:
+
+        for key in keys:
+            value = mapping.get(key)
+            
+            if(value is not None):
+                api_result[key]["num_checked"] += 1
+                if(key in ["rama", "rota"] and value == "OUTLIER"):
+                    api_result[key]["num_outliers"] += 1
+                elif(key == "rsrz" and float(value) > RSRZ_OUTLIER_CUTOFF):
+                    api_result[key]["num_outliers"] += 1
+                elif(key == "rna_suite" and value not in RNA_suite_not_nonRotameric):
+                    api_result[key]["num_outliers"] += 1
+                elif(key == "rna_pucker" and value == "outlier"):
+                    api_result[key]["num_outliers"] += 1
+                    
+    # correcting rna_pucker
+    api_result["rna_pucker"]["num_checked"] = api_result["rna_suite"]["num_checked"]
+
+    for key in keys:
+        num_checked = Decimal(api_result[key]["num_checked"])
+        num_outliers = Decimal(api_result[key]["num_outliers"])
+        percent_outliers = None
+        
+        if(num_checked != 0):
+            percent_outliers = (num_outliers * Decimal(100.0) / num_checked)
+
+        api_result[key]["percent_outliers"] = None if percent_outliers is None else float("%.2f" % float(percent_outliers))
+
+    # renaming keys
+    api_result["protein_ramachandran"] = api_result["rama"]
+    del api_result["rama"]
+
+    api_result["RSRZ"] = api_result["rsrz"]
+    del api_result["rsrz"]
+
+    api_result["protein_sidechains"] = api_result["rota"]
+    del api_result["rota"]
+
+
+    return api_result, 200
+
+
+def get_validation_xray_refine_data_stats(entry_id, graph):
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})
+    RETURN entry.DATA_COMPLETENESS,entry.NUM_FREE_REFLECTIONS,toInteger(entry.NUM_MILLER_INDICES),entry.TRANS_NCS,entry.DCC_RFREE, entry.DCC_REFINEMENT_PROGRAM,toInteger(entry.CENTRIC_OUTLIERS),
+    entry.TWIN_L, entry.EDS_R,entry.PERCENT_FREE_REFLECTIONS,toInteger(entry.ACENTRIC_OUTLIERS),entry.DCC_R,entry.EDS_RES_LOW,entry.WILSON_B_ESTIMATE,entry.BULK_SOLVENT_K,entry.EDS_RES,
+    entry.FO_FC_CORRELATION, entry.I_OVER_SIGMA,entry.TWIN_L2,entry.BULK_SOLVENT_B
+    """
+
+    mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    (data_completeness,num_free_reflections,num_miller_indices,trans_ncs,dcc_rfree,dcc_refinement_program,centric_outliers,twin_l,eds_r,percent_free_reflections,
+    acentric_outliers,dcc_r,eds_res_low,wilson_b_estimate,bulk_solvent_k,eds_res,fo_fc_correlation,i_over_sigma,twin_l2,bulk_solvent_b) = mappings[0]
+
+    return {
+        "DataCompleteness": {
+            "source": "EDS",
+            "value": float("%.2f" % float(data_completeness))
+        },
+        "num-free-reflections": {
+            "source": "EDS",
+            "value": int(num_free_reflections)
+        },
+        "numMillerIndices": {
+            "source": "Xtriage(Phenix)",
+            "value": num_miller_indices
+        },
+        "TransNCS": {
+            "source": "Xtriage(Phenix)",
+            "value": trans_ncs
+        },
+        "DCC_refinement_program": {
+            "source": "DCC",
+            "value": dcc_refinement_program
+        },
+        "centric_outliers": {
+            "source": "Xtriage(Phenix)",
+            "value": centric_outliers
+        },
+        "TwinL": {
+            "source": "Xtriage(Phenix)",
+            "value": float("%.2f" % float(twin_l))
+        },
+        "EDS_R": {
+            "source": "EDS",
+            "value": float("%.2f" % float(eds_r))
+        },
+        "DCC_Rfree": {
+            "source": "DCC",
+            "value": float("%.2f" % float(dcc_rfree))
+        },
+        "percent-free-reflections": {
+            "source": "EDS",
+            "value": float("%.2f" % float(percent_free_reflections))
+        },
+        "acentric_outliers": {
+            "source": "Xtriage(Phenix)",
+            "value": acentric_outliers
+        },
+        "DCC_R": {
+            "source": "DCC",
+            "value": float("%.2f" % float(dcc_r))
+        },
+        "EDS_resolution_low": {
+            "source": "EDS",
+            "value": float("%.2f" % float(eds_res_low))
+        },
+        "WilsonBestimate": {
+            "source": "Xtriage(Phenix)",
+            "value": float("%.3f" % float(wilson_b_estimate))
+        },
+        "bulk_solvent_k": {
+            "source": "EDS",
+            "value": float("%.3f" % float(bulk_solvent_k))
+        },
+        "EDS_resolution": {
+            "source": "EDS",
+            "value": float("%.2f" % float(eds_res))
+        },
+        "Fo_Fc_correlation": {
+            "source": "EDS",
+            "value": float("%.3f" % float(fo_fc_correlation))
+        },
+        "IoverSigma": {
+            "source": "Xtriage(Phenix)",
+            "value": i_over_sigma
+        },
+        "TwinL2": {
+            "source": "Xtriage(Phenix)",
+            "value": float("%.3f" % float(twin_l2))
+        },
+        "bulk_solvent_b": {
+            "source": "EDS",
+            "value": float("%.3f" % float(bulk_solvent_b))
+        }
+    }, 200
+    
