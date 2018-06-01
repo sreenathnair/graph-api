@@ -1,4 +1,5 @@
 from decimal import Decimal
+import copy
 
 RSRZ_OUTLIER_CUTOFF = 2
 RNA_suite_not_nonRotameric = ["NotAvailable","Rotameric",None]
@@ -475,3 +476,126 @@ def get_validation_xray_refine_data_stats(entry_id, graph):
         }
     }, 200
     
+
+def get_validation_residuewise_outlier_summary(entry_id, graph):
+
+    query1 = """
+    MATCH(entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[chain_rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain)
+    MATCH (pdb_res)-[val_rel:HAS_VALIDATION_DATA]->(val) WHERE chain.STRUCT_ASYM_ID=val_rel.STRUCT_ASYM_ID
+    RETURN DISTINCT entity.ID, pdb_res.ID, chain_rel.AUTH_SEQ_ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, chain_rel.MODEL, labels(val)[0] ORDER BY toInteger(pdb_res.ID)
+    """
+
+    query2 = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[chain_rel:IS_IN_CHAIN]->(chain:Chain) WHERE chain_rel.RAMA='OUTLIER' OR 
+    chain_rel.ROTA='OUTLIER' OR toFloat(chain_rel.RSRZ) > 2.0
+    RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, chain_rel.MODEL, pdb_res.ID, chain_rel.AUTH_SEQ_ID, chain_rel.RAMA, chain_rel.ROTA, chain_rel.RSRZ
+    ORDER BY toInteger(pdb_res.ID)
+    """
+
+
+    mappings = list(graph.run(query1, entry_id=entry_id)) + list(graph.run(query2, entry_id=entry_id))
+    
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    api_result = {
+        "molecules": []
+    }
+
+    dict_entity = {}
+    dict_chains = {}
+    dict_model = {}
+    dict_residues = {}
+
+    entity_id, pdb_res_id, auth_seq_id, auth_asym_id, struct_asym_id, model, type_of_outlier, rama, rota, rsrz = (None for x in range(0,10))
+
+    for mapping in mappings:
+
+        print(mapping)
+
+        types_of_outlier = []
+
+        if(len(mapping) == 7):
+
+            (entity_id, pdb_res_id, auth_seq_id, auth_asym_id, struct_asym_id, model, type_of_outlier) = mapping
+
+            if(model is None): continue
+
+            if(type_of_outlier == "Val_Clash"):
+                types_of_outlier.append("clashes")
+            elif(type_of_outlier == "Val_Chiral_Outlier"):
+                types_of_outlier.append("chirals")
+            elif(type_of_outlier == "Val_Bond_Outlier"):
+                types_of_outlier.append("bond_lengths")
+            elif(type_of_outlier == "Val_Angle_Outlier"):
+                types_of_outlier.append("bond_angles")
+            elif(type_of_outlier == "Val_Plane_Outlier"):
+                types_of_outlier.append("planes")
+            elif(type_of_outlier == "Val_Symm_Clash"):
+                types_of_outlier.append("symm_clashes")
+
+        elif(len(mapping) == 9):
+            
+            (entity_id, auth_asym_id, struct_asym_id, model, pdb_res_id, auth_seq_id, rama, rota, rsrz) = mapping
+
+            if(rota == 'OUTLIER'):
+                types_of_outlier.append("sidechain_outliers")
+            if(rama == 'OUTLIER'):
+                types_of_outlier.append("ramachandran_outliers")
+            if(rsrz is not None and float(rsrz) > RSRZ_OUTLIER_CUTOFF):
+                types_of_outlier.append("RSRZ")
+
+        if(dict_entity.get(entity_id) is None):
+            dict_entity[entity_id] = [(auth_asym_id, struct_asym_id)]
+        else:
+            dict_entity[entity_id].append((auth_asym_id, struct_asym_id))
+
+        if(dict_chains.get((entity_id, auth_asym_id)) is None):
+            dict_chains[(entity_id, auth_asym_id)] = [model]
+        else:
+            dict_chains[(entity_id, auth_asym_id)].append(model)
+
+        if(dict_model.get((entity_id, auth_asym_id, model)) is None):
+            dict_model[(entity_id, auth_asym_id, model)] = [(pdb_res_id, auth_seq_id)]
+        else:
+            dict_model[(entity_id, auth_asym_id, model)].append((pdb_res_id, auth_seq_id))
+
+        if(dict_residues.get((entity_id, auth_asym_id, model, pdb_res_id)) is None):
+            dict_residues[(entity_id, auth_asym_id, model, pdb_res_id)] = [x for x in types_of_outlier]
+        else:
+            dict_residues[(entity_id, auth_asym_id, model, pdb_res_id)] += [x for x in types_of_outlier]
+
+
+    for entity_id in dict_entity.keys():
+        entity_segment = {
+            "entity_id": int(entity_id),
+            "chains": []
+        }
+        for auth_asym_id, struct_asym_id in set(dict_entity[entity_id]):
+            chain_element = {
+                "chain_id": auth_asym_id,
+                "struct_asym_id": struct_asym_id,
+                "models": []
+            }
+            for model in set(dict_chains[(entity_id, auth_asym_id)]):
+                model_element = {
+                    "model_id": int(model),
+                    "residues": []
+                }
+                for pdb_res_id, auth_seq_id in set(dict_model[(entity_id, auth_asym_id, model)]):
+                    residue_element = {
+                        "author_insertion_code": "",
+                        "author_residue_number": int(auth_seq_id),
+                        "alt_code": "",
+                        "outlier_types": dict_residues[(entity_id, auth_asym_id, model, pdb_res_id)],
+                        "residue_number": int(pdb_res_id)
+                    }
+                    model_element["residues"].append(residue_element)
+                chain_element["models"].append(model_element)
+            entity_segment["chains"].append(chain_element)
+        api_result["molecules"].append(entity_segment)
+        
+
+    return api_result, 200
+

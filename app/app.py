@@ -11,6 +11,7 @@ from .residue import get_mappings_for_residue_binding_site
 from .compound import get_compound_atoms, get_compound_bonds, get_compound_in_pdb, get_compound_co_factors, get_compound_co_factors_het
 from .validation import get_validation_protein_ramachandran_sidechain_outliers, get_validation_rama_sidechain_listing, get_validation_rna_pucker_suite_outliers
 from .validation import get_validation_global_percentiles, get_validation_summary_quality_scores, get_validation_key_validation_stats, get_validation_xray_refine_data_stats
+from .validation import get_validation_residuewise_outlier_summary
 from werkzeug.contrib.cache import SimpleCache
 from .pdb import get_binding_sites_for_entry, get_binding_sites_for_uniprot, get_secondary_structures
 from .uniprot import get_unipdb, get_unipdb_residue
@@ -56,23 +57,30 @@ def get_uniprot_api(entry_id):
 
     cache_result = cache.get('get_uniprot_api:{}'.format(entry_id))
 
+    if(not CACHE_ENABLED):
+        cache_result = None
+
     if(cache_result is None):
 
+        response, response_status = get_uniprot(entry_id, graph)
         cache_result = {
             entry_id: {
-                "UniProt": get_uniprot(entry_id, graph)
+                "UniProt": response
             }
         }
-
+        
         cache.set('get_uniprot_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
 
-    return jsonify(cache_result)
+    return jsonify(cache_result), response_status
 
 
 @app.route('/api/mappings/interpro/<string:entry_id>')
 def get_interpro_api(entry_id):
 
     cache_result = cache.get('get_interpro_api:{}'.format(entry_id))
+
+    if(not CACHE_ENABLED):
+        cache_result = None
 
     if(cache_result is None):
         cache_result = {
@@ -499,3 +507,20 @@ def get_validation_xray_refine_data_stats_api(entry_id):
     
     return jsonify(cache_result), response_status
     
+
+@app.route('/api/validation/residuewise_outlier_summary/entry/<string:entry_id>')
+def get_validation_residuewise_outlier_summary_api(entry_id):
+
+    cache_result = cache.get('get_validation_residuewise_outlier_summary_api:{}'.format(entry_id))
+
+    if (not CACHE_ENABLED):
+        cache_result = None
+
+    if(cache_result is None):
+        response, response_status = get_validation_residuewise_outlier_summary(entry_id, graph)
+        cache_result = {
+            entry_id: response
+        }
+        cache.set('get_validation_residuewise_outlier_summary_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
+    
+    return jsonify(cache_result), response_status

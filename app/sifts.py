@@ -6,98 +6,90 @@ def get_uniprot(entry_id, graph):
 
     query = """
     MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[r:MAP_TO_UNIPROT_RESIDUE]->
-    (unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt),
-    (pdb_res)-[chain_rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain)
-    RETURN toInteger(entity.ID) as entityId, unp.ACCESSION, unp.NAME, toInteger(pdb_res.ID) as pdbResId, toInteger(unp_res.ID) as unpResId, r.CHAINS,
+    (unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt {TYPE:'CANONICAL'}),
+    (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
+    RETURN toInteger(entity.ID) as entityId, unp.ACCESSION, unp.NAME, toInteger(pdb_res.ID) as pdbResId, toInteger(unp_res.ID) as unpResId, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID,
     toInteger(chain_rel.AUTH_SEQ_ID) as auth_seq_id order by toInteger(pdb_res.ID)
     """
 
-    unp_map = {}
-    unp_desc = {}
-    result = list(graph.run(query, entry_id=entry_id))
+    mappings = list(graph.run(query, entry_id=entry_id))
 
-    # print(result)
-
-    prev = None
-
-    incr = 0
-    while incr < len(result):
-
-        r = result[incr]
-
-        (accession, name, pdb_res, unp_res, entity_id, chains, auth_seq_id) = (
-            r['unp.ACCESSION'], r['unp.NAME'], r['pdbResId'], r['unpResId'], r['entityId'], r['r.CHAINS'], r['auth_seq_id'])
-
-        # query returns list of chains as string, making a list of chains
-        chains = chains.translate({ord(c): '' for c in "[]' "}).split(',')
-
-        rec = (pdb_res, unp_res, entity_id, chains, auth_seq_id)
-
-        current = accession
-
-        if prev != current:
-            if unp_map.get(accession) is not None:
-                unp_map[accession].append(rec)
-            else:
-                unp_map[accession] = [rec]
-                unp_desc[accession] = name
-            if incr != 0:
-                r_prev = result[incr - 1]
-                (prev_accession, prev_name, prev_pdb_res, prev_unp_res, prev_entity_id, prev_chains, prev_auth_seq_id) = (
-                    r_prev['unp.ACCESSION'], r_prev['unp.NAME'], r_prev['pdbResId'], r_prev['unpResId'], r_prev['entityId'], r_prev['r.CHAINS'], r['auth_seq_id'])
-                prev_rec = (prev_pdb_res, prev_unp_res,
-                            prev_entity_id, prev_chains, prev_auth_seq_id)
-                unp_map[prev].append(prev_rec)
-        # last record
-        elif incr == len(result) - 1:
-            unp_map[current].append(rec)
-
-        prev = current
-        incr += 1
+    if(len(mappings) == 0):
+        return {}, 404
 
     api_result = {}
+    list_of_accessions = []
+    dict_unp_master = {}
+    dict_residues = {}
+    dict_chains = {}
+    dict_entity = {}
+    dict_residues_mappings = {}
+    dict_struct_asym_id = {}
 
-    for accession in unp_map.keys():
+    for mapping in mappings:
 
+        (entity_id, accession, name, pdb_res_id, unp_res_id, auth_asym_id, struct_asym_id, auth_seq_id) = mapping
+
+        if(accession not in list_of_accessions):
+            list_of_accessions.append(accession)
+            dict_unp_master[accession] = name
+
+        if(dict_entity.get(accession) is None):
+            dict_entity[accession] = [entity_id]
+        else:
+            dict_entity[accession].append(entity_id)
+
+        if(dict_chains.get(entity_id) is None):
+            dict_chains[entity_id] = [auth_asym_id]
+        else:
+            dict_chains[entity_id].append(auth_asym_id)
+
+        if(dict_struct_asym_id.get((entity_id, auth_asym_id)) is None):
+            dict_struct_asym_id[(entity_id, auth_asym_id)] = struct_asym_id
+
+        if(dict_residues.get((entity_id, auth_asym_id)) is None):
+            dict_residues[(entity_id, auth_asym_id)] = [pdb_res_id]
+        else:
+            dict_residues[(entity_id, auth_asym_id)].append(pdb_res_id)
+
+        dict_residues_mappings[(entity_id, auth_asym_id, pdb_res_id)] = (unp_res_id, auth_seq_id)
+    
+    for accession in list_of_accessions:
+        
+        temp_mappings = []
+        for entity_id in set(dict_entity[accession]):
+            for auth_asym_id in set(dict_chains[entity_id]):
+                for group in mit.consecutive_groups(dict_residues[(entity_id, auth_asym_id)]):
+                    group = list(group)
+                    start_auth_seq_id = dict_residues_mappings[(entity_id, auth_asym_id, group[0])][1]
+                    end_auth_seq_id = dict_residues_mappings[(entity_id, auth_asym_id, group[-1])][1]
+                    element = {
+                        "entity_id": int(entity_id),
+                        "chain_id": auth_asym_id,
+                        "struct_asym_id": dict_struct_asym_id[(entity_id, auth_asym_id)],
+                        "start": {
+                            "author_residue_number": None if start_auth_seq_id is None else int(start_auth_seq_id),
+                            "author_insertion_code": "",
+                            "residue_number": int(group[0])
+                        },
+                        "end": {
+                            "author_residue_number": None if end_auth_seq_id is None else int(end_auth_seq_id),
+                            "author_insertion_code": "",
+                            "residue_number": int(group[-1])
+                        },
+                        "unp_start": int(dict_residues_mappings[(entity_id, auth_asym_id, group[0])][0]),
+                        "unp_end": int(dict_residues_mappings[(entity_id, auth_asym_id, group[-1])][0])
+                    }
+                    temp_mappings.append(element)
+        
         api_result[accession] = {
-            "identifier": unp_desc[accession],
-            "name": unp_desc[accession],
-            "mappings": [
-            ]
+            "name": dict_unp_master[accession],
+            "identifier": dict_unp_master[accession],
+            "mappings": temp_mappings
         }
-
-        incr = 0
-        while incr < len(unp_map[accession]) - 1:
-            mapping = unp_map[accession][incr]
-            end_mapping = unp_map[accession][incr + 1]
-            unp_end = end_mapping[1]
-            end = end_mapping[0]
-            end_auth_seq_id = end_mapping[4]
-            del end_mapping
-
-            for chain in list(mapping[3]):
-
-                api_result[accession]["mappings"].append({
-                    "entity_id": mapping[2],
-                    "end": {
-                        "author_residue_number": end_auth_seq_id,
-                        "author_insertion_code": "",
-                        "residue_number": end
-                    },
-                    "chain_id": chain,
-                    "start": {
-                        "author_residue_number": mapping[4],
-                        "author_insertion_code": "",
-                        "residue_number": mapping[0]
-                    },
-                    "unp_start": mapping[1],
-                    "unp_end": unp_end,
-                    "struct_asym_id": chain
-                })
-
-            incr += 2
-
-    return api_result
+        del temp_mappings
+                    
+    return api_result, 200
 
 
 def get_uniprot_segments(entry_id, graph):
