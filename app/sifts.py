@@ -97,7 +97,7 @@ def get_uniprot_segments(entry_id, graph):
     query = """
     MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[r:MAP_TO_UNIPROT_RESIDUE]->
     (unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt),
-    (pdb_res)-[chain_rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain)
+    (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
     RETURN toInteger(entity.ID) as entityId, unp.ACCESSION, unp.NAME, toInteger(pdb_res.ID) as pdbResId, toInteger(unp_res.ID) as unpResId, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID,
     toInteger(chain_rel.AUTH_SEQ_ID) as auth_seq_id order by toInteger(unp_res.ID)
     """
@@ -108,9 +108,17 @@ def get_uniprot_segments(entry_id, graph):
     dict_auth_seq_id = {}
     mappings = list(graph.run(query, entry_id=entry_id))
 
+    if(len(mappings) == 0):
+        return {}, 404
+
     for mapping in mappings:
         (entity_id, unp_accession, unp_name, pdb_res_id, unp_res_id,
          auth_asym_id, struct_asym_id, auth_seq_id) = mapping
+
+        # ugly fix, need to see for any issues in data consistency - auth_seq_id for unobserved residues is null which fails mit function
+        if(auth_seq_id is None):
+            auth_seq_id = pdb_res_id
+
         key = (entity_id, unp_accession, unp_name,
                auth_asym_id, struct_asym_id)
 
@@ -195,7 +203,7 @@ def get_uniprot_segments(entry_id, graph):
 
             incr += 1
 
-    return api_result
+    return api_result, 200
 
 
 def get_pfam(entry_id, graph):
@@ -208,6 +216,10 @@ def get_pfam(entry_id, graph):
     """
 
     mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
     dict_pfam = {}
     dict_pfam_mappings = {}
     api_result = {}
@@ -245,18 +257,18 @@ def get_pfam(entry_id, graph):
             "chain_id": auth_asym_id,
             "struct_asym_id": struct_asym_id,
             "end": {
-                "author_residue_number": int(end_auth_seq_id),
+                "author_residue_number": None if end_auth_seq_id is None else int(end_auth_seq_id),
                 "author_insertion_code": "",
                 "residue_number": int(end_res_id)
             },
             "start": {
-                "author_residue_number": int(start_auth_seq_id),
+                "author_residue_number": None if start_auth_seq_id is None else int(start_auth_seq_id),
                 "author_insertion_code": "",
                 "residue_number": int(start_res_id)
             }
         })
 
-    return api_result
+    return api_result, 200
 
 
 def get_interpro(entry_id, graph):
@@ -269,6 +281,9 @@ def get_interpro(entry_id, graph):
     """
 
     mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     dict_interpro_res = {}
     dict_interpro_auth_seq = {}
@@ -320,7 +335,7 @@ def get_interpro(entry_id, graph):
         api_result[interpro_accession]["mappings"].append(
             temp_segment)
 
-    return api_result
+    return api_result, 200
 
 
 def get_cath(entry_id, graph):
@@ -335,6 +350,9 @@ def get_cath(entry_id, graph):
     dict_cath = {}
     dict_domain = {}
     mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     api_result = {}
 
@@ -391,7 +409,7 @@ def get_cath(entry_id, graph):
 
         api_result[cathcode]["mappings"].append(temp_segment)
 
-    return api_result
+    return api_result, 200
 
 
 def get_scop(entry_id, graph):
@@ -412,6 +430,10 @@ def get_scop(entry_id, graph):
     list_sunid = []
     dict_scop = {}
     mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+        
     dict_scop_auth = {}
 
     for mapping in mappings:
@@ -477,7 +499,7 @@ def get_scop(entry_id, graph):
 
         api_result[sunid]["mappings"].append(temp_segment)
 
-    return api_result
+    return api_result, 200
 
 
 def get_go(entry_id, graph):
@@ -507,6 +529,9 @@ def get_go(entry_id, graph):
     mol_go_mappings = list(graph.run(mol_go_query, entry_id=entry_id))
 
     go_dict = {}
+
+    if(len(bio_go_mappings) == 0 and len(cell_go_mappings) == 0 and len(mol_go_mappings) == 0):
+        return {}, 404
 
     for mapping in bio_go_mappings:
         (entity_id, auth_asym_id, struct_asym_id, go_id, go_def, go_name) = mapping
@@ -579,7 +604,7 @@ def get_go(entry_id, graph):
     for go_id in go_dict.keys():
         api_result[go_id] = go_dict[go_id]
 
-    return api_result
+    return api_result, 200
 
 
 def get_ec(entry_id, graph):
@@ -592,11 +617,14 @@ def get_ec(entry_id, graph):
     dict_ec = {}
     mappings = list(graph.run(query, entry_id=entry_id))
 
+    if(len(mappings) == 0):
+        return {}, 404
+
     for mapping in mappings:
 
         (entity_id, auth_asym_id, struct_asym_id, ec_num,
          accepted_name, systematic_name, reaction, synonyms) = mapping
-
+    
         # synonyms returns list as string, so converting them as list
         synonyms = synonyms.translate({ord(c): '' for c in "[]' "}).split(',')
 
@@ -628,7 +656,7 @@ def get_ec(entry_id, graph):
     for key in dict_ec.keys():
         api_result[key] = dict_ec[key]
 
-    return api_result
+    return api_result, 200
 
 
 def get_uniprot_to_pfam(accession, graph):
@@ -642,6 +670,9 @@ def get_uniprot_to_pfam(accession, graph):
     api_result = {}
 
     mappings = list(graph.run(query, accession=accession))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     for mapping in mappings:
         (pfam_accession, pfam_name, desc, res_id) = mapping
@@ -668,7 +699,7 @@ def get_uniprot_to_pfam(accession, graph):
                 "unp_end": group[-1]
             })
 
-    return api_result
+    return api_result, 200
 
 
 def get_isoforms(entry_id, graph, mapping_type):
@@ -689,6 +720,9 @@ def get_isoforms(entry_id, graph, mapping_type):
         mappings = list(graph.run(best_query, entry_id=entry_id))
     elif(mapping_type == 'A'):
         mappings = list(graph.run(all_query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     dict_unp_master = {}
     dict_mappings = {}
@@ -746,4 +780,4 @@ def get_isoforms(entry_id, graph, mapping_type):
             "unp_end": int(end[2])
         })
 
-    return api_result
+    return api_result, 200

@@ -12,6 +12,9 @@ def get_mappings_for_residue_uniprot(entry_id, entity_id, residue_number, graph)
         'entryId': str(entry_id), 'entityId': str(entity_id), 'residueNumber': residue_number
     }))
 
+    if(len(result) == 0):
+        return {}, 404
+
     final_result = {}
 
     for unp in result:
@@ -21,7 +24,7 @@ def get_mappings_for_residue_uniprot(entry_id, entity_id, residue_number, graph)
                 "name": unp['unp_name']
             }
 
-    return final_result
+    return final_result, 200
 
 def get_mappings_for_residue_pfam(entry_id, entity_id, residue_number, graph):
 
@@ -35,6 +38,9 @@ def get_mappings_for_residue_pfam(entry_id, entity_id, residue_number, graph):
         'entryId': str(entry_id), 'entityId': str(entity_id), 'residueNumber': residue_number
     }))
 
+    if(len(result) == 0):
+        return {}, 404
+
     final_result = {}
 
     for pfam in result:
@@ -45,7 +51,7 @@ def get_mappings_for_residue_pfam(entry_id, entity_id, residue_number, graph):
                 "description": pfam['pfam_desc']
             }
 
-    return final_result
+    return final_result, 200
 
 def get_mappings_for_residue_interpro(entry_id, entity_id, residue_number, graph):
 
@@ -58,6 +64,9 @@ def get_mappings_for_residue_interpro(entry_id, entity_id, residue_number, graph
         'entryId': str(entry_id), 'entityId': str(entity_id), 'residueNumber': residue_number
     }))
 
+    if(len(result) == 0):
+        return {}, 404
+
     final_result = {}
 
     for interpro in result:
@@ -66,7 +75,7 @@ def get_mappings_for_residue_interpro(entry_id, entity_id, residue_number, graph
                 "name": interpro['interpro_name']
             }
         
-    return final_result
+    return final_result, 200
 
 def get_mappings_for_residue_cath(entry_id, entity_id, residue_number, graph):
 
@@ -78,6 +87,9 @@ def get_mappings_for_residue_cath(entry_id, entity_id, residue_number, graph):
     result = list(graph.run(query, parameters= {
         'entryId': str(entry_id), 'entityId': str(entity_id), 'residueNumber': residue_number
     }))
+
+    if(len(result) == 0):
+        return {}, 404
 
     final_result = {}
 
@@ -91,7 +103,7 @@ def get_mappings_for_residue_cath(entry_id, entity_id, residue_number, graph):
                 "name": cath['name']
             }
         
-    return final_result
+    return final_result, 200
 
 def get_mappings_for_residue_scop(entry_id, entity_id, residue_number, graph):
 
@@ -108,6 +120,9 @@ def get_mappings_for_residue_scop(entry_id, entity_id, residue_number, graph):
     result = list(graph.run(query, parameters= {
         'entryId': str(entry_id), 'entityId': str(entity_id), 'residueNumber': residue_number
     }))
+
+    if(len(result) == 0):
+        return {}, 404
 
     final_result = {}
     sunid_mapping = {}
@@ -148,7 +163,7 @@ def get_mappings_for_residue_scop(entry_id, entity_id, residue_number, graph):
                 "struct_asym_id": chain_id
             })
 
-    return final_result
+    return final_result, 200
 
 
 def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, site_residues, graph):
@@ -181,6 +196,9 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, s
     mappings = list(graph.run(query, parameters= {
         'entry_id': str(entry_id), 'entity_id': str(entity_id), 'residue': str(residue_number)
     }))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     site_dict = {}
     site_ligand_dict = {}
@@ -293,4 +311,4 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, s
 
         final_result.append(temp)
 
-    return final_result
+    return final_result, 200

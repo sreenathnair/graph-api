@@ -56,7 +56,7 @@ def get_validation_protein_ramachandran_sidechain_outliers(entry_id, graph):
 def get_validation_rama_sidechain_listing(entry_id, graph):
     
     query = """
-    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain)
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain) WHERE rel.MODEL IS NOT null
     RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, rel.MODEL, rel.PSI, rel.CIS_PEPTIDE, pdb_res.ID, rel.AUTH_SEQ_ID, rel.RAMA, rel.PHI, pdb_res.CHEM_COMP_ID, rel.ROTA
     """
 
@@ -396,11 +396,11 @@ def get_validation_xray_refine_data_stats(entry_id, graph):
     return {
         "DataCompleteness": {
             "source": "EDS",
-            "value": float("%.2f" % float(data_completeness))
+            "value": None if data_completeness is None else float("%.2f" % float(data_completeness))
         },
         "num-free-reflections": {
             "source": "EDS",
-            "value": int(num_free_reflections)
+            "value": None if num_free_reflections is None else int(num_free_reflections)
         },
         "numMillerIndices": {
             "source": "Xtriage(Phenix)",
@@ -420,19 +420,19 @@ def get_validation_xray_refine_data_stats(entry_id, graph):
         },
         "TwinL": {
             "source": "Xtriage(Phenix)",
-            "value": float("%.2f" % float(twin_l))
+            "value": None if twin_l is None else float("%.2f" % float(twin_l))
         },
         "EDS_R": {
             "source": "EDS",
-            "value": float("%.2f" % float(eds_r))
+            "value": None if eds_r is None else float("%.2f" % float(eds_r))
         },
         "DCC_Rfree": {
             "source": "DCC",
-            "value": float("%.2f" % float(dcc_rfree))
+            "value": None if dcc_rfree is None else float("%.2f" % float(dcc_rfree))
         },
         "percent-free-reflections": {
             "source": "EDS",
-            "value": float("%.2f" % float(percent_free_reflections))
+            "value": None if percent_free_reflections is None else float("%.2f" % float(percent_free_reflections))
         },
         "acentric_outliers": {
             "source": "Xtriage(Phenix)",
@@ -440,27 +440,27 @@ def get_validation_xray_refine_data_stats(entry_id, graph):
         },
         "DCC_R": {
             "source": "DCC",
-            "value": float("%.2f" % float(dcc_r))
+            "value": None if dcc_r is None else float("%.2f" % float(dcc_r))
         },
         "EDS_resolution_low": {
             "source": "EDS",
-            "value": float("%.2f" % float(eds_res_low))
+            "value": None if eds_res_low is None else float("%.2f" % float(eds_res_low))
         },
         "WilsonBestimate": {
             "source": "Xtriage(Phenix)",
-            "value": float("%.3f" % float(wilson_b_estimate))
+            "value": None if wilson_b_estimate is None else float("%.3f" % float(wilson_b_estimate))
         },
         "bulk_solvent_k": {
             "source": "EDS",
-            "value": float("%.3f" % float(bulk_solvent_k))
+            "value": None if bulk_solvent_k is None else float("%.3f" % float(bulk_solvent_k))
         },
         "EDS_resolution": {
             "source": "EDS",
-            "value": float("%.2f" % float(eds_res))
+            "value": None if eds_res is None else float("%.2f" % float(eds_res))
         },
         "Fo_Fc_correlation": {
             "source": "EDS",
-            "value": float("%.3f" % float(fo_fc_correlation))
+            "value": None if fo_fc_correlation is None else float("%.3f" % float(fo_fc_correlation))
         },
         "IoverSigma": {
             "source": "Xtriage(Phenix)",
@@ -468,11 +468,11 @@ def get_validation_xray_refine_data_stats(entry_id, graph):
         },
         "TwinL2": {
             "source": "Xtriage(Phenix)",
-            "value": float("%.3f" % float(twin_l2))
+            "value": None if twin_l2 is None else float("%.3f" % float(twin_l2))
         },
         "bulk_solvent_b": {
             "source": "EDS",
-            "value": float("%.3f" % float(bulk_solvent_b))
+            "value": None if bulk_solvent_b is None else float("%.3f" % float(bulk_solvent_b))
         }
     }, 200
     
@@ -492,10 +492,8 @@ def get_validation_residuewise_outlier_summary(entry_id, graph):
     ORDER BY toInteger(pdb_res.ID)
     """
 
-
     mappings = list(graph.run(query1, entry_id=entry_id)) + list(graph.run(query2, entry_id=entry_id))
     
-
     if(len(mappings) == 0):
         return {}, 404
 
@@ -511,8 +509,6 @@ def get_validation_residuewise_outlier_summary(entry_id, graph):
     entity_id, pdb_res_id, auth_seq_id, auth_asym_id, struct_asym_id, model, type_of_outlier, rama, rota, rsrz = (None for x in range(0,10))
 
     for mapping in mappings:
-
-        print(mapping)
 
         types_of_outlier = []
 
@@ -599,3 +595,114 @@ def get_validation_residuewise_outlier_summary(entry_id, graph):
 
     return api_result, 200
 
+
+def get_validation_protein_rna_dna_geometry_outlier_residues(entry_id, graph):
+
+    query = """
+    MATCH(entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[chain_rel:IS_IN_CHAIN {OBSERVED:'Y'}]->(chain:Chain)
+    MATCH (pdb_res)-[val_rel:HAS_VALIDATION_DATA]->(val) WHERE chain.STRUCT_ASYM_ID=val_rel.STRUCT_ASYM_ID
+    RETURN DISTINCT entity.ID, pdb_res.ID, chain_rel.AUTH_SEQ_ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, chain_rel.MODEL, labels(val)[0] ORDER BY toInteger(pdb_res.ID)
+    """
+
+    mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    api_result = {
+        "molecules": []
+    }
+
+    dict_entity = {}
+    dict_chains = {}
+    dict_model = {}
+    dict_residues = {}
+    dict_outlier = {}
+    list_outlier = ['clashes','chirals','bond_lengths','bond_angles','planes','symm_clashes']
+
+    for mapping in mappings:
+
+        types_of_outlier = []
+
+        (entity_id, pdb_res_id, auth_seq_id, auth_asym_id, struct_asym_id, model, type_of_outlier) = mapping
+
+        if(model is None): continue
+
+        if(type_of_outlier == "Val_Clash"):
+            types_of_outlier.append("clashes")
+            type_of_outlier = "clashes"
+        elif(type_of_outlier == "Val_Chiral_Outlier"):
+            types_of_outlier.append("chirals")
+            type_of_outlier = "chirals"
+        elif(type_of_outlier == "Val_Bond_Outlier"):
+            types_of_outlier.append("bond_lengths")
+            type_of_outlier = "bond_lengths"
+        elif(type_of_outlier == "Val_Angle_Outlier"):
+            types_of_outlier.append("bond_angles")
+            type_of_outlier = "bond_angles"
+        elif(type_of_outlier == "Val_Plane_Outlier"):
+            types_of_outlier.append("planes")
+            type_of_outlier = "planes"
+        elif(type_of_outlier == "Val_Symm_Clash"):
+            types_of_outlier.append("symm_clashes")
+            type_of_outlier = "symm_clashes"
+
+        if(dict_entity.get(entity_id) is None):
+            dict_entity[entity_id] = [(auth_asym_id, struct_asym_id)]
+        else:
+            dict_entity[entity_id].append((auth_asym_id, struct_asym_id))
+
+        if(dict_chains.get((entity_id, auth_asym_id)) is None):
+            dict_chains[(entity_id, auth_asym_id)] = [model]
+        else:
+            dict_chains[(entity_id, auth_asym_id)].append(model)
+
+        if(dict_model.get((entity_id, auth_asym_id, model)) is None):
+            dict_model[(entity_id, auth_asym_id, model)] = [(pdb_res_id, auth_seq_id)]
+        else:
+            dict_model[(entity_id, auth_asym_id, model)].append((pdb_res_id, auth_seq_id))
+
+        if(dict_outlier.get((entity_id, auth_asym_id, model, type_of_outlier)) is None):
+            dict_outlier[(entity_id, auth_asym_id, model, type_of_outlier)] = [(pdb_res_id, auth_seq_id)]
+        else:
+            dict_outlier[(entity_id, auth_asym_id, model, type_of_outlier)].append((pdb_res_id, auth_seq_id))
+
+        if(dict_residues.get((entity_id, auth_asym_id, model, pdb_res_id)) is None):
+            dict_residues[(entity_id, auth_asym_id, model, pdb_res_id)] = [x for x in types_of_outlier]
+        else:
+            dict_residues[(entity_id, auth_asym_id, model, pdb_res_id)] += [x for x in types_of_outlier]
+
+    for entity_id in dict_entity.keys():
+        entity_segment = {
+            "entity_id": int(entity_id),
+            "chains": []
+        }
+        for auth_asym_id, struct_asym_id in set(dict_entity[entity_id]):
+            chain_element = {
+                "chain_id": auth_asym_id,
+                "struct_asym_id": struct_asym_id,
+                "models": []
+            }
+            for model in set(dict_chains[(entity_id, auth_asym_id)]):
+                model_element = {
+                    "model_id": int(model),
+                    "outlier_types": {}
+                }
+                for outlier in list_outlier:
+                    if(dict_outlier.get((entity_id, auth_asym_id, model, outlier)) is not None):
+                        outlier_element = []
+                        for pdb_res_id, auth_seq_id in dict_outlier[(entity_id, auth_asym_id, model, outlier)]:
+                            residue_element = {
+                                "author_insertion_code": "",
+                                "author_residue_number": int(auth_seq_id),
+                                "alt_code": "",
+                                "residue_number": int(pdb_res_id)
+                            }
+                            outlier_element.append(residue_element)
+                        model_element["outlier_types"][outlier] = outlier_element
+                chain_element["models"].append(model_element)
+            entity_segment["chains"].append(chain_element)
+        api_result["molecules"].append(entity_segment)
+        
+
+    return api_result, 200

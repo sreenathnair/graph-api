@@ -13,6 +13,9 @@ def get_unipdb(uniprot_accession, graph):
     mappings = list(graph.run(query, parameters={
         'accession': str(uniprot_accession)
     }))
+    
+    if(len(mappings) == 0):
+        return {}, 404
 
     final_result = {
         'Pfam': get_mappings_for_unp_residue_pfam(uniprot_accession, graph),
@@ -106,7 +109,7 @@ def get_unipdb(uniprot_accession, graph):
             'segments': mappings
         })
 
-    return final_result
+    return final_result, 200
 
 
 def get_mappings_for_unp_residue_pfam(uniprot_accession, graph):
@@ -148,6 +151,9 @@ def get_unipdb_residue(uniprot_accession, unp_res, graph):
         'accession': str(uniprot_accession), 'unpResidue': str(unp_res)
     }))
 
+    if(len(mappings) == 0):
+        return {}, 404
+
     final_result = {}
 
     pfam_dict = {}
@@ -158,28 +164,28 @@ def get_unipdb_residue(uniprot_accession, unp_res, graph):
     for mapping in mappings:
 
         (entry_id, entity_id, pdb_res) = mapping
-        temp_map = get_mappings_for_residue_pfam(
+        temp_map, resp_status = get_mappings_for_residue_pfam(
             entry_id, entity_id, pdb_res, graph)
 
         for pfam in temp_map.keys():
             if pfam_dict.get(pfam) is None:
                 pfam_dict[pfam] = temp_map[pfam]
 
-        temp_map = get_mappings_for_residue_interpro(
+        temp_map, resp_status = get_mappings_for_residue_interpro(
             entry_id, entity_id, pdb_res, graph)
 
         for interpro in temp_map.keys():
             if interpro_dict.get(interpro) is None:
                 interpro_dict[interpro] = temp_map[interpro]
 
-        temp_map = get_mappings_for_residue_cath(
+        temp_map, resp_status = get_mappings_for_residue_cath(
             entry_id, entity_id, pdb_res, graph)
 
         for cath in temp_map.keys():
             if cath_dict.get(cath) is None:
                 cath_dict[cath] = temp_map[cath]
 
-        temp_map = get_mappings_for_residue_scop(
+        temp_map, resp_status = get_mappings_for_residue_scop(
             entry_id, entity_id, pdb_res, graph)
 
         for scop in temp_map.keys():
@@ -191,4 +197,4 @@ def get_unipdb_residue(uniprot_accession, unp_res, graph):
     final_result['CATH'] = cath_dict
     final_result['SCOP'] = scop_dict
 
-    return final_result
+    return final_result, 200
