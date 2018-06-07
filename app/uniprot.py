@@ -28,7 +28,15 @@ def get_unipdb(uniprot_accession, graph):
 
         (entry, entity, chains, pdb_res, unp_res,
          pdb_res_code, unp_res_code) = mapping
-        pdb_res_one_letter, pdb_res_desc = amino_acid_codes[pdb_res_code]
+    
+        pdb_res_desc = None
+
+        # modified/mutated residues will be different, handle them
+        if(amino_acid_codes.get(pdb_res_code) is None):
+            pdb_res_one_letter = pdb_res_code
+        else:
+            pdb_res_one_letter, pdb_res_desc = amino_acid_codes[pdb_res_code]
+            
         del pdb_res_desc
         data = (chains, pdb_res, unp_res, pdb_res_one_letter, unp_res_code)
 
