@@ -9,6 +9,10 @@ def get_compound_atoms(chem_comp_id, graph):
     """
     
     mappings = list(graph.run(query, chem_comp_id=chem_comp_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
     result_list = []
 
     for mapping in mappings:
@@ -43,7 +47,7 @@ def get_compound_atoms(chem_comp_id, graph):
         })
 
     
-    return result_list
+    return result_list, 200
 
 
 def get_compound_bonds(chem_comp_id, graph):
@@ -54,6 +58,10 @@ def get_compound_bonds(chem_comp_id, graph):
     """
 
     mappings = list(graph.run(query, chem_comp_id=chem_comp_id))
+    
+    if(len(mappings) == 0):
+        return {}, 404
+    
     result_list = []
 
     for mapping in mappings:
@@ -80,7 +88,7 @@ def get_compound_bonds(chem_comp_id, graph):
             "aromatic": aromatic_flag
         })
 
-    return result_list
+    return result_list, 200
 
 
 def get_compound_in_pdb(chem_comp_id, graph):
@@ -92,10 +100,11 @@ def get_compound_in_pdb(chem_comp_id, graph):
 
     mappings = list(graph.run(query, chem_comp_id=chem_comp_id))
 
+
     if(len(mappings) != 0):
-        return mappings[0][0]
+        return mappings[0][0], 200
     else:
-        return []
+        return {}, 404
 
 
 def get_compound_co_factors(graph):
@@ -109,6 +118,9 @@ def get_compound_co_factors(graph):
 
     mappings = list(graph.run(query))
 
+    if(len(mappings) == 0):
+        return {}, 404
+
     for mapping in mappings:
         (cofactor_class, cofactor_class_name, list_ec, list_cofactors) = mapping
 
@@ -117,12 +129,12 @@ def get_compound_co_factors(graph):
             "cofactors": list_cofactors
         }]
 
-    return api_result
+    return api_result, 200
 
 def get_compound_co_factors_het(het_code, graph):
 
     query = """
-    MATCH (src_ligand:Ligand {ID:'TDP'})-[:ACTS_AS_COFACTOR]->(co:CO_Factor_Class)<-[:ACTS_AS_COFACTOR]->(dest_ligand:Ligand) WHERE src_ligand.ID <> dest_ligand.ID
+    MATCH (src_ligand:Ligand {ID:$het_code})-[:ACTS_AS_COFACTOR]->(co:CO_Factor_Class)<-[:ACTS_AS_COFACTOR]->(dest_ligand:Ligand) WHERE src_ligand.ID <> dest_ligand.ID
     RETURN co.NAME, src_ligand.NAME, dest_ligand.ID, dest_ligand.NAME
     """
 
@@ -131,6 +143,10 @@ def get_compound_co_factors_het(het_code, graph):
         "chem_comp_ids": []
     }
     mappings = list(graph.run(query, het_code=het_code))
+
+    if(len(mappings) == 0):
+        return None, 404
+
     ligand_name = None
 
     for mapping in mappings:
@@ -148,4 +164,4 @@ def get_compound_co_factors_het(het_code, graph):
         "name": ligand_name
     })
 
-    return api_result
+    return api_result, 200

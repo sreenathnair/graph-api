@@ -10,6 +10,7 @@ def get_binding_sites_for_entry(entry_id, graph):
     site_boundligand_dict = {}
     site_residue_dict = {}
     final_result = []
+    no_results = 0
 
     query = """
     MATCH (entry:Entry {ID:$entry_id})-[relation:HAS_BINDING_SITE]->(site:Binding_Site)
@@ -23,6 +24,9 @@ def get_binding_sites_for_entry(entry_id, graph):
     mappings = list(graph.run(query, parameters={
         'entry_id': str(entry_id)
     }))
+
+    if(len(mappings) == 0):
+        no_results += 1
 
     for mapping in mappings:
 
@@ -64,6 +68,9 @@ def get_binding_sites_for_entry(entry_id, graph):
     mappings = list(graph.run(query, parameters={
         'entry_id': str(entry_id)
     }))
+
+    if(len(mappings) == 0):
+        no_results += 1
 
     for mapping in mappings:
 
@@ -119,7 +126,10 @@ def get_binding_sites_for_entry(entry_id, graph):
 
         final_result.append(temp)
 
-    return final_result
+    if(no_results == 2):
+        return {}, 404
+
+    return final_result, 200
 
 
 def get_binding_sites_for_uniprot(uniprot_accession, graph):
@@ -138,11 +148,14 @@ def get_binding_sites_for_uniprot(uniprot_accession, graph):
         'accession': str(uniprot_accession)
     }))
 
+    if(len(mappings) == 0):
+        return {}, 404
+
     for mapping in mappings:
         (unp_res_id, unp_res_code, pdb_res_id,
          pdb_res_code, entity_id, entry_id) = mapping
 
-        residue_result = get_mappings_for_residue_binding_site(
+        residue_result, residue_status = get_mappings_for_residue_binding_site(
             entry_id, entity_id, pdb_res_id, False, graph)
 
         temp_result = {
@@ -157,7 +170,7 @@ def get_binding_sites_for_uniprot(uniprot_accession, graph):
 
         final_result.append(temp_result)
 
-    return final_result
+    return final_result, 200
 
 
 def get_secondary_structures(entry_id, graph):
@@ -171,6 +184,9 @@ def get_secondary_structures(entry_id, graph):
     mappings = list(graph.run(query, parameters={
         'entry_id': str(entry_id)
     }))
+
+    if(len(mappings) == 0):
+        return {}, 404
 
     dict_helices = {}
     dict_strands_res_id = {}
@@ -307,4 +323,4 @@ def get_secondary_structures(entry_id, graph):
 
         final_result["molecules"].append(temp_entity)
 
-    return final_result
+    return final_result, 200
