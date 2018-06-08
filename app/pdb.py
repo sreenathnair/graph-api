@@ -101,10 +101,10 @@ def get_binding_sites_for_entry(entry_id, graph):
 
             temp["ligand_residues"].append({
                 "entity_id": int(bound_entity_id),
-                "residue_number": int(bound_residue_id),
+                "residue_number": None if bound_residue_id is None else int(bound_residue_id),
                 "author_insertion_code": "null",
                 "chain_id": bound_auth_asym_id,
-                "author_residue_number": int(bound_auth_seq_id),
+                "author_residue_number": None if bound_auth_seq_id is None else int(bound_auth_seq_id),
                 "chem_comp_id": bound_ligand,
                 "struct_asym_id": bound_struct_asym_id
             })
