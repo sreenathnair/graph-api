@@ -39,10 +39,10 @@ def get_compound_atoms(chem_comp_id, graph):
             "pdb_name": alt_atom_id,
             "aromatic": aromatic_flag,
             "element": element_symbol,
-            "ideal_y": float("%.3f" % float(y_ideal)),
-            "ideal_x": float("%.3f" % float(x_ideal)),
-            "charge": float(charge),
-            "ideal_z": float("%.3f" % float(z_ideal)),
+            "ideal_y": None if y_ideal is None else float("%.3f" % float(y_ideal)),
+            "ideal_x": None if x_ideal is None else float("%.3f" % float(x_ideal)),
+            "charge": None if charge is None else float(charge),
+            "ideal_z": None if z_ideal is None else float("%.3f" % float(z_ideal)),
             "atom_name": atom_id
         })
 
@@ -134,8 +134,9 @@ def get_compound_co_factors(graph):
 def get_compound_co_factors_het(het_code, graph):
 
     query = """
-    MATCH (src_ligand:Ligand {ID:$het_code})-[:ACTS_AS_COFACTOR]->(co:CO_Factor_Class)<-[:ACTS_AS_COFACTOR]->(dest_ligand:Ligand) WHERE src_ligand.ID <> dest_ligand.ID
-    RETURN co.NAME, src_ligand.NAME, dest_ligand.ID, dest_ligand.NAME
+    MATCH (src_ligand:Ligand {ID:$het_code})-[:ACTS_AS_COFACTOR]->(co:CO_Factor_Class)
+    OPTIONAL MATCH (co)<-[:ACTS_AS_COFACTOR]->(dest_ligand:Ligand)
+    RETURN co.NAME, dest_ligand.ID, dest_ligand.NAME
     """
 
     api_result = {
@@ -147,21 +148,13 @@ def get_compound_co_factors_het(het_code, graph):
     if(len(mappings) == 0):
         return None, 404
 
-    ligand_name = None
-
     for mapping in mappings:
-        (co_name, src_ligand_name, dest_ligand_id, dest_ligand_name) = mapping
-        ligand_name = src_ligand_name
+        (co_name, dest_ligand_id, dest_ligand_name) = mapping
 
         api_result["class"] = co_name
         api_result["chem_comp_ids"].append({
             "chem_comp_id": dest_ligand_id,
             "name": dest_ligand_name
         })
-
-    api_result["chem_comp_ids"].append({
-        "chem_comp_id": het_code,
-        "name": ligand_name
-    })
 
     return api_result, 200

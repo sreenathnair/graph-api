@@ -306,9 +306,10 @@ def get_uniprot_to_pfam_api(accession):
         cache_result = None
 
     if(cache_result is None):
+        response, response_status = get_uniprot_to_pfam(accession, graph)
         cache_result = {
             accession: {
-                "Pfam": get_uniprot_to_pfam(accession, graph)
+                "Pfam": response
             }
         }
         cache.set('get_uniprot_to_pfam_api:{}'.format(accession), cache_result, timeout=cache_timeout)
@@ -620,9 +621,13 @@ def get_validation_rama_sidechain_listing_api(entry_id):
 
     if(cache_result is None):
         response, response_status = get_validation_rama_sidechain_listing(entry_id, graph)
-        cache_result = {
-            entry_id: response
-        }
+
+        if(response_status != 200):
+            cache_result = {}
+        else:
+            cache_result = {
+                entry_id: response
+            }
         cache.set('get_validation_rama_sidechain_listing_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
     else:
         response_status = 200
@@ -764,9 +769,14 @@ def get_validation_xray_refine_data_stats_api(entry_id):
 
     if(cache_result is None):
         response, response_status = get_validation_xray_refine_data_stats(entry_id, graph)
-        cache_result = {
-            entry_id: response
-        }
+
+        if(response_status != 200):
+            cache_result = {}
+        else:
+            cache_result = {
+                entry_id: response
+            }
+
         cache.set('get_validation_xray_refine_data_stats_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
     else:
         response_status = 200

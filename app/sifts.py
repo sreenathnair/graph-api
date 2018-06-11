@@ -96,7 +96,7 @@ def get_uniprot_segments(entry_id, graph):
 
     query = """
     MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[r:MAP_TO_UNIPROT_RESIDUE]->
-    (unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt),
+    (unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt {TYPE:'CANONICAL'}),
     (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
     RETURN toInteger(entity.ID) as entityId, unp.ACCESSION, unp.NAME, toInteger(pdb_res.ID) as pdbResId, toInteger(unp_res.ID) as unpResId, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID,
     toInteger(chain_rel.AUTH_SEQ_ID) as auth_seq_id order by toInteger(unp_res.ID)
@@ -106,6 +106,7 @@ def get_uniprot_segments(entry_id, graph):
     dict_pdb_res = {}
     dict_unp_res = {}
     dict_auth_seq_id = {}
+    dict_auth_seq_id_nulls = {}
     mappings = list(graph.run(query, entry_id=entry_id))
 
     if(len(mappings) == 0):
@@ -118,6 +119,7 @@ def get_uniprot_segments(entry_id, graph):
         # ugly fix, need to see for any issues in data consistency - auth_seq_id for unobserved residues is null which fails mit function
         if(auth_seq_id is None):
             auth_seq_id = pdb_res_id
+            dict_auth_seq_id_nulls[(entity_id, unp_accession, unp_name, auth_asym_id, struct_asym_id, auth_seq_id)] = True
 
         key = (entity_id, unp_accession, unp_name,
                auth_asym_id, struct_asym_id)
@@ -161,7 +163,6 @@ def get_uniprot_segments(entry_id, graph):
         # dont clear since it still holds the reference, so create new
         del temp_list
         temp_list = []
-
         for group in mit.consecutive_groups(dict_auth_seq_id[key]):
             group = list(group)
             temp_list.append((group[0], group[-1]))
@@ -172,7 +173,7 @@ def get_uniprot_segments(entry_id, graph):
         temp_list = []
 
     api_result = {}
-
+    
     for key in dict_pdb_res.keys():
 
         (entity_id, unp_accession, unp_name, auth_asym_id, struct_asym_id) = key
@@ -183,14 +184,18 @@ def get_uniprot_segments(entry_id, graph):
 
         while(incr < len(dict_pdb_res[key])):
 
+            print('start->', dict_auth_seq_id[key][incr][0])
+            auth_start_null = dict_auth_seq_id_nulls.get((entity_id, unp_accession, unp_name, auth_asym_id, struct_asym_id, dict_auth_seq_id[key][incr][0]))
+            auth_end_null = dict_auth_seq_id_nulls.get((entity_id, unp_accession, unp_name, auth_asym_id, struct_asym_id, dict_auth_seq_id[key][incr][-1]))
+
             api_result[unp_accession]["mappings"].append({
                 "start": {
-                    "author_residue_number": dict_auth_seq_id[key][incr][0],
+                    "author_residue_number": None if auth_start_null is True else dict_auth_seq_id[key][incr][0],
                     "residue_number": dict_pdb_res[key][incr][0],
                     "author_insertion_code": ""
                 },
                 "end": {
-                    "author_residue_number": dict_auth_seq_id[key][incr][-1],
+                    "author_residue_number": None if auth_end_null is True else dict_auth_seq_id[key][incr][-1],
                     "residue_number": dict_pdb_res[key][incr][-1],
                     "author_insertion_code": ""
                 },
@@ -435,6 +440,7 @@ def get_scop(entry_id, graph):
         return {}, 404
         
     dict_scop_auth = {}
+    dict_scop_sunid = {}
 
     for mapping in mappings:
         (sunid, desc, super_sunid, super_desc, fold_sunid, fold_desc, class_sunid, class_desc, sccs, scop_id, res_id, entity_id, auth_asym_id, struct_asym_id,
@@ -470,6 +476,9 @@ def get_scop(entry_id, graph):
         else:
             dict_scop[key].append(res_id)
 
+        if(dict_scop_sunid.get(scop_id) is None):
+            dict_scop_sunid[scop_id] = sunid
+
         # keep auth_start and auth_end for a domain, this is not to be stored in main dictionary
         if(dict_scop_auth.get(scop_id) is None):
             dict_scop_auth[scop_id] = (auth_start, auth_end)
@@ -480,24 +489,24 @@ def get_scop(entry_id, graph):
         (auth_start, auth_end) = dict_scop_auth[scop_id]
 
         temp_segment = {
-            "entity_id": entity_id,
+            "entity_id": int(entity_id),
             "end": {
-                "author_residue_number": int(auth_start),
+                "author_residue_number": None if auth_end is None else int(auth_end),
                 "author_insertion_code": "",
-                "residue_number": int(dict_scop[key][0])
+                "residue_number": int(dict_scop[key][-1])
             },
             "segment_id": int(segment_id),
             "chain_id": auth_asym_id,
             "scop_id": scop_id,
             "start": {
-                "author_residue_number": int(auth_start),
+                "author_residue_number": None if auth_start is None else int(auth_start),
                 "author_insertion_code": "",
-                "residue_number": int(dict_scop[key][-1])
+                "residue_number": int(dict_scop[key][0])
             },
             "struct_asym_id": struct_asym_id
         }
 
-        api_result[sunid]["mappings"].append(temp_segment)
+        api_result[dict_scop_sunid[scop_id]]["mappings"].append(temp_segment)
 
     return api_result, 200
 

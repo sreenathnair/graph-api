@@ -16,8 +16,8 @@ def get_validation_protein_ramachandran_sidechain_outliers(entry_id, graph):
     list_rota = []
     mappings = list(graph.run(query, entry_id=entry_id))
 
-    if(len(mappings) == 0):
-        return {}, 404
+    # if(len(mappings) == 0):
+    #     return {}, 404
 
     for mapping in mappings:
 
@@ -69,8 +69,14 @@ def get_validation_rama_sidechain_listing(entry_id, graph):
     if(len(mappings) == 0):
         return {}, 404
 
+    all_null_count = 0
+
     for mapping in mappings:
         (entity_id, auth_asym_id, struct_asym_id, model, psi, cis_peptide, res_id, auth_seq_id, rama, phi, chem_comp_id, rota) = mapping
+
+        if((psi, cis_peptide, rama, phi, rota) == tuple(None for x in range(0, 5))):
+            all_null_count += 1
+            continue
 
         key = (entity_id, auth_asym_id, struct_asym_id, model)
 
@@ -95,6 +101,9 @@ def get_validation_rama_sidechain_listing(entry_id, graph):
             dict_residues[key].append((psi, cis_peptide, res_id, auth_seq_id, rama, phi, chem_comp_id, rota))
 
     
+    if(all_null_count == len(mappings)):
+        return {}, 404
+
     api_result = {
         "molecules": []
     }
@@ -392,6 +401,10 @@ def get_validation_xray_refine_data_stats(entry_id, graph):
 
     (data_completeness,num_free_reflections,num_miller_indices,trans_ncs,dcc_rfree,dcc_refinement_program,centric_outliers,twin_l,eds_r,percent_free_reflections,
     acentric_outliers,dcc_r,eds_res_low,wilson_b_estimate,bulk_solvent_k,eds_res,fo_fc_correlation,i_over_sigma,twin_l2,bulk_solvent_b) = mappings[0]
+
+    if(data_completeness,num_free_reflections,num_miller_indices,trans_ncs,dcc_rfree,dcc_refinement_program,centric_outliers,twin_l,eds_r,percent_free_reflections,
+    acentric_outliers,dcc_r,eds_res_low,wilson_b_estimate,bulk_solvent_k,eds_res,fo_fc_correlation,i_over_sigma,twin_l2,bulk_solvent_b) == tuple(None for x in range(0, 20)):
+        return {}, 404
 
     return {
         "DataCompleteness": {

@@ -212,15 +212,11 @@ def get_secondary_structures(entry_id, graph):
 
             for sheet in sheets:
                 if(dict_strands_res_id.get((entity_id, struct_asym_id, sheet)) is None):
-                    dict_strands_res_id[(entity_id, struct_asym_id, sheet)] = [
-                        pdb_residue]
-                    dict_strands_res_auth_seq_id[(entity_id, struct_asym_id, sheet)] = [
-                        auth_seq_id]
+                    dict_strands_res_id[(entity_id, struct_asym_id, sheet)] = [pdb_residue]
+                    dict_strands_res_auth_seq_id[(entity_id, struct_asym_id, sheet)] = [auth_seq_id]
                 else:
-                    dict_strands_res_id[(entity_id, struct_asym_id, sheet)].append(
-                        pdb_residue)
-                    dict_strands_res_auth_seq_id[(
-                        entity_id, struct_asym_id, sheet)].append(auth_seq_id)
+                    dict_strands_res_id[(entity_id, struct_asym_id, sheet)].append(pdb_residue)
+                    dict_strands_res_auth_seq_id[(entity_id, struct_asym_id, sheet)].append(auth_seq_id)
 
         dict_struct_asym_id[struct_asym_id] = auth_asym_id
 
@@ -297,8 +293,7 @@ def get_secondary_structures(entry_id, graph):
             if(dict_strand_chain.get((entity_id, struct_asym_id)) is None):
                 dict_strand_chain[(entity_id, struct_asym_id)] = [temp_strand]
             else:
-                dict_strand_chain[(entity_id, struct_asym_id)
-                                  ].append(temp_strand)
+                dict_strand_chain[(entity_id, struct_asym_id)].append(temp_strand)
 
     for entity in dict_entity.keys():
         temp_entity = {
