@@ -668,6 +668,39 @@ def get_ec(entry_id, graph):
     return api_result, 200
 
 
+def get_best_structures(accession, graph):
+
+    query = """
+    MATCH(uniprot:UniProt {ACCESSION:$accession})-[:HAS_UNP_RESIDUE]->(unp_res:UNP_Residue)<-[:MAP_TO_UNIPROT_RESIDUE]-(pdb_res:PDB_Residue)<-[:HAS_PDB_RESIDUE]-(entity:Entity)-[:HAS_TAXONOMY]->(tax:Taxonomy), (entity)-[:CONTAINS_CHAIN]->(chain:Chain), (entity)<-[:HAS_ENTITY]-(entry:Entry)-[:EXPERIMENT]->(method:Method)
+    WITH entry.ID AS entry_id, entity.ID AS entity_id, chain.AUTH_ASYM_ID AS chain_id, collect(DISTINCT pdb_res.ID) AS pdb_residues, collect(DISTINCT unp_res.ID) AS unp_residues, MIN(toInteger(pdb_res.ID)) AS pdb_start, MAX(toInteger(pdb_res.ID)) as pdb_end, MIN(toInteger(unp_res.ID)) as unp_start, MAX(toInteger(unp_res.ID)) as unp_end, toFloat(uniprot.LENGTH) AS unp_length, tax.TAX_ID AS taxonomy_id, method.METHOD AS experiment, toFloat(entry.RESOLUTION) AS resolution, toFloat(entry.R_FACTOR) as r_factor
+    RETURN entry_id, entity_id, chain_id, length(pdb_residues)/unp_length AS coverage, pdb_start, pdb_end, unp_start, unp_end, taxonomy_id, resolution, r_factor, experiment ORDER BY coverage DESC
+    """
+
+    mappings = list(graph.run(query, accession=accession))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    api_result = []
+
+    for mapping in mappings:
+        (entry_id, entity_id, chain_id, coverage, pdb_start, pdb_end, unp_start, unp_end, taxonomy_id, resolution, r_factor, experiment) = mapping
+
+        api_result.append({
+            "end": pdb_end,
+            "chain_id": chain_id,
+            "pdb_id": entry_id,
+            "start": pdb_start,
+            "unp_end": unp_end,
+            "coverage": float("%.3f" % float(coverage)),
+            "unp_start": unp_start,
+            "resolution": float("%.1f" % float(resolution)),
+            "experimental_method": experiment,
+            "tax_id": int(taxonomy_id)
+        })
+
+    return api_result, 200
+
 def get_uniprot_to_pfam(accession, graph):
 
     query = """

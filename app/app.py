@@ -5,7 +5,7 @@ import re
 from .utils import find_ranges
 import more_itertools as mit
 import json
-from .sifts import get_uniprot, get_interpro, get_cath, get_scop, get_go, get_ec, get_pfam, get_uniprot_to_pfam, get_uniprot_segments, get_isoforms
+from .sifts import get_uniprot, get_interpro, get_cath, get_scop, get_go, get_ec, get_pfam, get_uniprot_to_pfam, get_uniprot_segments, get_isoforms, get_best_structures
 from .residue import get_mappings_for_residue_uniprot, get_mappings_for_residue_cath, get_mappings_for_residue_interpro, get_mappings_for_residue_pfam, get_mappings_for_residue_scop
 from .residue import get_mappings_for_residue_binding_site
 from .compound import get_compound_atoms, get_compound_bonds, get_compound_in_pdb, get_compound_co_factors, get_compound_co_factors_het
@@ -291,6 +291,26 @@ def get_structural_domains_api(entry_id):
             }
         }
         cache.set('get_structural_domains_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
+    else:
+        response_status = 200
+
+    return jsonify(cache_result), response_status
+
+@app.route('/api/mappings/best_structures/<string:accession>')
+def get_best_structures_api(accession):
+
+    cache_result = cache.get('get_best_structures_api:{}'.format(accession))
+    response_status = None
+
+    if(not CACHE_ENABLED):
+        cache_result = None
+
+    if(cache_result is None):
+        response, response_status = get_best_structures(accession, graph)
+        cache_result = {
+            accession: response
+        }
+        cache.set('get_best_structures_api:{}'.format(accession), cache_result, timeout=cache_timeout)
     else:
         response_status = 200
 
