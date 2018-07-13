@@ -5,7 +5,8 @@ import re
 from .utils import find_ranges
 import more_itertools as mit
 import json
-from .sifts import get_uniprot, get_interpro, get_cath, get_scop, get_go, get_ec, get_pfam, get_uniprot_to_pfam, get_uniprot_segments, get_isoforms, get_best_structures
+from .sifts import get_uniprot, get_interpro, get_cath, get_scop, get_go, get_ec, get_pfam, get_uniprot_to_pfam, get_uniprot_segments, get_isoforms, get_best_structures, get_homologene
+from  .sifts import get_ensembl
 from .residue import get_mappings_for_residue_uniprot, get_mappings_for_residue_cath, get_mappings_for_residue_interpro, get_mappings_for_residue_pfam, get_mappings_for_residue_scop
 from .residue import get_mappings_for_residue_binding_site
 from .compound import get_compound_atoms, get_compound_bonds, get_compound_in_pdb, get_compound_co_factors, get_compound_co_factors_het
@@ -311,6 +312,48 @@ def get_best_structures_api(accession):
             accession: response
         }
         cache.set('get_best_structures_api:{}'.format(accession), cache_result, timeout=cache_timeout)
+    else:
+        response_status = 200
+
+    return jsonify(cache_result), response_status
+
+
+@app.route('/api/mappings/homologene/<string:entry_id>/<string:entity_id>')
+def get_homologene_api(entry_id, entity_id):
+
+    cache_result = cache.get('get_homologene_api:{}:{}'.format(entry_id, entity_id))
+    response_status = None
+
+    if(not CACHE_ENABLED):
+        cache_result = None
+
+    if(cache_result is None):
+        response, response_status = get_homologene(entry_id, entity_id, graph)
+        cache_result = {
+            entry_id +'_' +entity_id : response
+        }
+        cache.set('get_homologene_api:{}:{}'.format(entry_id, entity_id), cache_result, timeout=cache_timeout)
+    else:
+        response_status = 200
+
+    return jsonify(cache_result), response_status
+
+
+@app.route('/api/mappings/ensembl/<string:entry_id>')
+def get_ensembl_api(entry_id):
+
+    cache_result = cache.get('get_ensembl_api:{}'.format(entry_id))
+    response_status = None
+
+    if(not CACHE_ENABLED):
+        cache_result = None
+
+    if(cache_result is None):
+        response, response_status = get_ensembl(entry_id, graph)
+        cache_result = {
+            entry_id : response
+        }
+        cache.set('get_ensembl_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
     else:
         response_status = 200
 

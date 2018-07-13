@@ -701,6 +701,116 @@ def get_best_structures(accession, graph):
 
     return api_result, 200
 
+
+def get_homologene(entry_id, entity_id, graph):
+
+    query = """
+    MATCH (src_entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(src_entity:Entity {ID:$entity_id})-[:HAS_HOMOLOGOUS_UNIPROT]->(uniprot:UniProt)-[:IS_HOMOLOGOUS]->(homologene:Homologene)
+    WITH homologene as homologene, uniprot.ACCESSION as accession
+    MATCH (homologene)<-[:IS_HOMOLOGOUS]-(uniprot:UniProt {ACCESSION: accession})<-[:HAS_HOMOLOGOUS_UNIPROT]-(entity:Entity)<-[:HAS_ENTITY]-(entry:Entry), (entity)-[:HAS_TAXONOMY]->(taxonomy:Taxonomy)
+    RETURN homologene.HOMOLOGENE_ID, uniprot.ACCESSION, entity.ID, entity.DESCRIPTION, entry.ID, taxonomy.NCBI_SCIENTIFIC
+    """
+
+    mappings = list(graph.run(query, entry_id=entry_id, entity_id=entity_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    api_result = {
+        "Homologene": {}
+    }
+
+    dict_homologene = {}
+
+    for mapping in mappings:
+        (homologene_id, accession, entity_id, entity_best_name, entry_id, organism_name) = mapping
+
+        if dict_homologene.get(homologene_id) is None:
+            dict_homologene[homologene_id] = {
+                "identifier": int(homologene_id),
+                "mappings": []
+            }
+
+        dict_homologene[homologene_id]["mappings"].append({
+            "homologus_pdb_id": entry_id,
+            "homologus_pdb_entity_id": int(entity_id),
+            "name": entity_best_name,
+            "organism_scientific_name": organism_name,
+            "accession": accession
+        })
+
+    for homologene_id in dict_homologene.keys():
+
+        api_result["Homologene"][homologene_id] = dict_homologene.get(homologene_id)
+
+    return api_result, 200
+
+
+def get_ensembl(entry_id, graph):
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[ensembl_rel:HAS_ENSEMBL]->(ensembl:Ensembl_Gene),
+    (pdb_res)-[:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt),
+    (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
+    RETURN ensembl.GENE_ID, toInteger(entity.ID), chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, toInteger(ensembl_rel.ORDINAL), ensembl_rel.COVERAGE, ensembl_rel.EXON_ID, 
+    ensembl_rel.TRANSCRIPT_ID, ensembl_rel.TRANSLATION_ID, toInteger(ensembl_rel.GENOME_START), toInteger(ensembl_rel.GENOME_END), unp.ACCESSION, MIN(toInteger(pdb_res.ID)) AS pdb_res_start, 
+    MAX(toInteger(pdb_res.ID)) AS pdb_res_end, MIN(toInteger(unp_res.ID)) AS unp_res_start, MAX(toInteger(unp_res.ID)) AS unp_res_end, MIN(toInteger(chain_rel.AUTH_SEQ_ID)) AS auth_seq_start, 
+    MAX(toInteger(chain_rel.AUTH_SEQ_ID)) AS auth_seq_end
+    """
+
+    mappings = list(graph.run(query, entry_id=entry_id))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    api_result = {
+        "Ensembl": {}
+    }
+
+    dict_ensembl = {}
+
+    for mapping in mappings:
+        (gene_id, entity_id, auth_asym_id, struct_asym_id, ordinal, coverage, exon_id, transcript_id, translation_id, genome_start, genome_end, accession, pdb_start,
+        pdb_end, unp_start, unp_end, auth_seq_start, auth_seq_end) = mapping
+
+        if dict_ensembl.get(gene_id) is None:
+            dict_ensembl[gene_id] = {
+                "identifier": gene_id,
+                "mappings": []
+            }
+
+        dict_ensembl[gene_id]["mappings"].append({
+            "ordinal": ordinal,
+            "entity_id": entity_id,
+            "end": {
+                "author_residue_number": auth_seq_end,
+                "author_insertion_code": "",
+                "residue_number": pdb_end
+            },
+            "accession": accession,
+            "genome_start": genome_start,
+            "chain_id": auth_asym_id,
+            "start": {
+                "author_residue_number": auth_seq_start,
+                "author_insertion_code": "",
+                "residue_number": pdb_start
+            },
+            "unp_end": unp_end,
+            "transcript_id": transcript_id,
+            "exon_id": exon_id,
+            "coverage": float("%.3f" % float(coverage)),
+            "unp_start": unp_start,
+            "translation_id": translation_id,
+            "genome_end": genome_end,
+            "struct_asym_id": struct_asym_id
+        })
+
+    for gene_id in dict_ensembl.keys():
+
+        api_result["Ensembl"][gene_id] = dict_ensembl.get(gene_id)
+
+    return api_result, 200
+
 def get_uniprot_to_pfam(accession, graph):
 
     query = """
