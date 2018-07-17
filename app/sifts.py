@@ -688,6 +688,7 @@ def get_best_structures(accession, graph):
 
         api_result.append({
             "end": pdb_end,
+            "entity_id": int(entity_id),
             "chain_id": chain_id,
             "pdb_id": entry_id,
             "start": pdb_start,
@@ -726,6 +727,7 @@ def get_best_structures_residue_range(accession, unp_start_in, unp_end_in, graph
 
         api_result.append({
             "end": pdb_end,
+            "entity_id": int(entity_id),
             "chain_id": chain_id,
             "pdb_id": entry_id,
             "start": pdb_start,

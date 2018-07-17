@@ -505,6 +505,60 @@ def get_mappings_for_residue(entry_id, entity_id, residue_number):
 
     return jsonify(cache_result), response_status
 
+
+@app.route('/api/mappings/residue_mapping/<string:entry_id>/<string:entity_id>/<string:residue_start>/<string:residue_end>')
+def get_mappings_for_residue_range(entry_id, entity_id, residue_start, residue_end):
+
+    cache_result = cache.get('get_mappings_for_residue_range:{}:{}:{}:{}'.format(entry_id, entity_id, residue_start, residue_end))
+    response_status = None
+
+    if(not CACHE_ENABLED):
+        cache_result = None
+
+    if(cache_result is None):
+        cache_result = {
+            entry_id: {
+                "entity_id": int(entity_id),
+                "residues": []
+            }
+        }
+
+        for residue_number in range(int(residue_start), int(residue_end) + 1):
+            
+            residue_number = str(residue_number)
+
+            unp_result, unp_status = get_mappings_for_residue_uniprot(entry_id, entity_id, residue_number, graph)
+            pfam_result, pfam_status = get_mappings_for_residue_pfam(entry_id, entity_id, residue_number, graph)
+            interpro_result, interpro_status = get_mappings_for_residue_interpro(entry_id, entity_id, residue_number, graph)
+            cath_result, cath_status = get_mappings_for_residue_cath(entry_id, entity_id, residue_number, graph)
+            scop_result, scop_status = get_mappings_for_residue_scop(entry_id, entity_id, residue_number, graph)
+            binding_sites_result, binding_sites_status = get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, True, graph)
+
+            # if(unp_status != 200 and pfam_status != 200 and interpro_status != 200 and cath_status != 200 and scop_status != 200 and binding_sites_status != 200):
+            #     response_status = unp_status
+            # else:
+            #     response_status = 200
+
+            residue_element = {
+                "residue_number": int(residue_number),
+                "features": {
+                    "UniProt": unp_result,
+                    "Pfam": pfam_result,
+                    "InterPro": interpro_result,
+                    "CATH": cath_result,
+                    "SCOP": scop_result,
+                    "binding_sites": binding_sites_result
+                }
+            }
+
+            cache_result[entry_id]["residues"].append(residue_element)
+
+        cache.set('get_mappings_for_residue_range:{}:{}:{}:{}'.format(entry_id, entity_id, residue_start, residue_end), cache_result, timeout=cache_timeout)
+    else:
+        response_status = 200
+
+    return jsonify(cache_result), response_status
+
 @app.route('/api/mappings/binding_sites/<string:entry_id>')
 def get_binding_sites_for_entry_api(entry_id):
 
