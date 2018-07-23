@@ -476,7 +476,7 @@ def get_uniref90_api(entry_id):
         cache_result = None
 
     if(cache_result is None):
-        response, response_status = get_uniref90(entry_id, graph)
+        response, response_status = get_uniref90(entry_id, graph, 'A')
         cache_result = {
             entry_id: response
         }
@@ -486,6 +486,26 @@ def get_uniref90_api(entry_id):
 
     return jsonify(cache_result), response_status
 
+
+@app.route('/api/mappings/homologene_uniref90/<string:entry_id>')
+def get_homologene_uniref90_api(entry_id):
+
+    cache_result = cache.get('get_homologene_uniref90_api:{}'.format(entry_id))
+    response_status = None
+
+    if(not CACHE_ENABLED):
+        cache_result = None
+
+    if(cache_result is None):
+        response, response_status = get_uniref90(entry_id, graph, 'H')
+        cache_result = {
+            entry_id: response
+        }
+        cache.set('get_homologene_uniref90_api:{}'.format(entry_id), cache_result, timeout=cache_timeout)
+    else:
+        response_status = 200
+
+    return jsonify(cache_result), response_status
 
 @app.route('/api/mappings/residue_mapping/<string:entry_id>/<string:entity_id>/<string:residue_number>')
 def get_mappings_for_residue(entry_id, entity_id, residue_number):

@@ -976,24 +976,41 @@ def get_isoforms(entry_id, graph, mapping_type):
     return api_result, 200
 
 
-def get_uniref90(entry_id, graph):
+def get_uniref90(entry_id, graph, type_of_query):
 
-    unf_query = """
+    homologene_unf_query = """
+    MATCH(entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)-[:MAP_TO_UNIREF_RESIDUE]->(unf_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unf:UniProt)-[:HAS_TAXONOMY]->(tax:Taxonomy), (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain), (unp_res)<-[:HAS_UNP_RESIDUE]-(unp:UniProt)-[:IS_HOMOLOGOUS]->(homologene:Homologene)<-[:IS_HOMOLOGOUS]-(unf)
+    RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, unf.ACCESSION, unf.NAME, tax.TAX_ID, tax.NCBI_SCIENTIFIC, tax.NCBI_COMMON, toInteger(pdb_res.ID), toInteger(chain_rel.AUTH_SEQ_ID), pdb_res.CHEM_COMP_ID, toInteger(unf_res.ID), unf_res.ONE_LETTER_CODE ORDER BY toInteger(pdb_res.ID)
+    """
+
+    all_unf_query = """
     MATCH(entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)-[:MAP_TO_UNIREF_RESIDUE]->(unf_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unf:UniProt)-[:HAS_TAXONOMY]->(tax:Taxonomy), (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
     RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, unf.ACCESSION, unf.NAME, tax.TAX_ID, tax.NCBI_SCIENTIFIC, tax.NCBI_COMMON, toInteger(pdb_res.ID), toInteger(chain_rel.AUTH_SEQ_ID), pdb_res.CHEM_COMP_ID, toInteger(unf_res.ID), unf_res.ONE_LETTER_CODE ORDER BY toInteger(pdb_res.ID)
     """
 
-    unf_mappings = list(graph.run(unf_query, entry_id=entry_id))
-
-    unp_query = """
+    all_unp_query = """
     MATCH(entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt)-[:HAS_TAXONOMY]->(tax:Taxonomy), (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
     RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, unp.ACCESSION, unp.NAME, tax.TAX_ID, tax.NCBI_SCIENTIFIC, tax.NCBI_COMMON, toInteger(pdb_res.ID), toInteger(chain_rel.AUTH_SEQ_ID), pdb_res.CHEM_COMP_ID, toInteger(unp_res.ID), unp_res.ONE_LETTER_CODE ORDER BY toInteger(pdb_res.ID)
     """
 
-    unp_mappings = list(graph.run(unp_query, entry_id=entry_id))
+    homologene_unp_query = """
+    MATCH(entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt)-[:HAS_TAXONOMY]->(tax:Taxonomy), (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain), (unp)-[:IS_HOMOLOGOUS]->(homologene:Homologene)
+    RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, unp.ACCESSION, unp.NAME, tax.TAX_ID, tax.NCBI_SCIENTIFIC, tax.NCBI_COMMON, toInteger(pdb_res.ID), toInteger(chain_rel.AUTH_SEQ_ID), pdb_res.CHEM_COMP_ID, toInteger(unp_res.ID), unp_res.ONE_LETTER_CODE ORDER BY toInteger(pdb_res.ID)
+    """
+
+    if type_of_query == 'A':
+        unf_mappings = list(graph.run(all_unf_query, entry_id=entry_id))
+        unp_mappings = list(graph.run(all_unp_query, entry_id=entry_id))
+    else:
+        unf_mappings = list(graph.run(homologene_unf_query, entry_id=entry_id))
+        unp_mappings = list(graph.run(homologene_unp_query, entry_id=entry_id))
+
+    api_result = {
+        "UniProt": {}
+    }
 
     if(len(unf_mappings) == 0 and len(unp_mappings) == 0):
-        return {}, 404
+        return api_result, 404
 
     api_result = {
         "UniProt": {}
