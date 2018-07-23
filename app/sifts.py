@@ -1,5 +1,6 @@
 
 import more_itertools as mit
+from .amino_acid_codes import amino_acid_codes
 
 
 def get_uniprot(entry_id, graph):
@@ -971,5 +972,99 @@ def get_isoforms(entry_id, graph, mapping_type):
             "unp_start": int(start[2]),
             "unp_end": int(end[2])
         })
+
+    return api_result, 200
+
+
+def get_uniref90(entry_id, graph):
+
+    unf_query = """
+    MATCH(entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)-[:MAP_TO_UNIREF_RESIDUE]->(unf_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unf:UniProt)-[:HAS_TAXONOMY]->(tax:Taxonomy), (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
+    RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, unf.ACCESSION, unf.NAME, tax.TAX_ID, tax.NCBI_SCIENTIFIC, tax.NCBI_COMMON, toInteger(pdb_res.ID), toInteger(chain_rel.AUTH_SEQ_ID), pdb_res.CHEM_COMP_ID, toInteger(unf_res.ID), unf_res.ONE_LETTER_CODE ORDER BY toInteger(pdb_res.ID)
+    """
+
+    unf_mappings = list(graph.run(unf_query, entry_id=entry_id))
+
+    unp_query = """
+    MATCH(entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity)-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue)-[:MAP_TO_UNIPROT_RESIDUE]->(unp_res:UNP_Residue)<-[:HAS_UNP_RESIDUE]-(unp:UniProt)-[:HAS_TAXONOMY]->(tax:Taxonomy), (pdb_res)-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
+    RETURN entity.ID, chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, unp.ACCESSION, unp.NAME, tax.TAX_ID, tax.NCBI_SCIENTIFIC, tax.NCBI_COMMON, toInteger(pdb_res.ID), toInteger(chain_rel.AUTH_SEQ_ID), pdb_res.CHEM_COMP_ID, toInteger(unp_res.ID), unp_res.ONE_LETTER_CODE ORDER BY toInteger(pdb_res.ID)
+    """
+
+    unp_mappings = list(graph.run(unp_query, entry_id=entry_id))
+
+    if(len(unf_mappings) == 0 and len(unp_mappings) == 0):
+        return {}, 404
+
+    api_result = {
+        "UniProt": {}
+    }
+
+    dict_details = {}
+
+    mappings = unp_mappings + unf_mappings
+   
+    for mapping in mappings:
+        
+        (entity_id, auth_asym_id, struct_asym_id, unf_accession, unf_name, tax_id, scientific_name, common_name, pdb_res_id, auth_seq_id, chem_comp_id, unf_res_id, unf_one_letter_code) = mapping
+
+        if api_result["UniProt"].get(unf_accession) is None:
+            api_result["UniProt"][unf_accession] = {
+                "identifier": unf_name,
+                "name": unf_name,
+                "organism_scientific_name": "{} {}".format(scientific_name, "" if common_name is None else "({})".format(common_name)),
+                "tax_id": int(tax_id),
+                "mappings": []
+            }
+
+        key = (unf_accession, entity_id, auth_asym_id, struct_asym_id)
+        if dict_details.get((key)) is None:
+            dict_details[key] = [(pdb_res_id, auth_seq_id, chem_comp_id, unf_res_id, unf_one_letter_code)]
+        else:
+            dict_details[key].append((pdb_res_id, auth_seq_id, chem_comp_id, unf_res_id, unf_one_letter_code))
+
+
+    for key in dict_details.keys():
+        (unf_accession, entity_id, auth_asym_id, struct_asym_id) = key
+        details = dict_details.get(key)
+
+        pdb_start = details[0][0]
+        pdb_end = details[-1][0]
+        auth_start = details[0][1]
+        auth_end = details[-1][1]
+        unf_start = details[0][3]
+        unf_end = details[-1][3]
+        count_identities = 0
+
+        for detail in details:
+            (pdb_res_id, auth_seq_id, chem_comp_id, unf_res_id, unf_one_letter_code) = detail
+
+            (pdb_one_letter_code, chem_desc) = amino_acid_codes[chem_comp_id]
+
+            if pdb_one_letter_code == unf_one_letter_code:
+                count_identities += 1
+
+        identity = count_identities/len(details)
+
+        api_result["UniProt"][unf_accession]["mappings"].append({
+            "entity_id": int(entity_id),
+            "end": {
+                "author_residue_number": None if auth_end is None else int(auth_end),
+                "author_insertion_code": "",
+                "residue_number": int(pdb_end)
+            },
+            "chain_id": auth_asym_id,
+            "pdb_start": int(pdb_start),
+            "start": {
+                "author_residue_number": None if auth_start is None else int(auth_start),
+                "author_insertion_code": "",
+                "residue_number": int(pdb_start)
+            },
+            "unp_end": int(unf_end),
+            "pdb_end": int(pdb_end),
+            "struct_asym_id": struct_asym_id,
+            "unp_start": int(unf_start),
+            "identity": float("%.3f" % float(identity))
+        })
+
 
     return api_result, 200
