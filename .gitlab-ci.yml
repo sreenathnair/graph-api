@@ -1,5 +1,5 @@
 test:
   script:
-  - source venv/bin/activate
+  - python -v
   - pip install -r pip_requirements.txt
   - ./run_tests.sh prod
