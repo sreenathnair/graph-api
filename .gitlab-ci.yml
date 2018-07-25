@@ -1,3 +1,4 @@
 test:
   script:
+  - pip install -r pip_requirements.txt
   - ./run_tests.sh prod
