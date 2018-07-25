@@ -1,6 +1,15 @@
+#!/usr/bin/env python
+
+"""
+sifts.py: This have list of function calls which retrieves data related to SIFTS process
+"""
 
 import more_itertools as mit
 from .amino_acid_codes import amino_acid_codes
+
+__author__          = "Sreenath Sasidharan Nair"
+__version__         = "1.0"
+__email__           = "sreenath@ebi.ac.uk"
 
 
 def get_uniprot(entry_id, graph):
@@ -1011,10 +1020,6 @@ def get_uniref90(entry_id, graph, type_of_query):
 
     if(len(unf_mappings) == 0 and len(unp_mappings) == 0):
         return api_result, 404
-
-    api_result = {
-        "UniProt": {}
-    }
 
     dict_details = {}
 

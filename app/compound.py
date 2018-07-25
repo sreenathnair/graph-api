@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+
+"""
+compound.py: This have list of function calls which retrieves data related to compounds
+"""
+
+__author__          = "Sreenath Sasidharan Nair"
+__version__         = "1.0"
+__email__           = "sreenath@ebi.ac.uk"
 
 
 def get_compound_atoms(chem_comp_id, graph):

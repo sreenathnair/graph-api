@@ -1,5 +1,15 @@
+#!/usr/bin/env python
+
+"""
+validation.py: This have list of function calls which retrieves data related to validation for PDB entry/residue
+"""
+
 from decimal import Decimal
 import copy
+
+__author__          = "Sreenath Sasidharan Nair"
+__version__         = "1.0"
+__email__           = "sreenath@ebi.ac.uk"
 
 RSRZ_OUTLIER_CUTOFF = 2
 RNA_suite_not_nonRotameric = ["NotAvailable","Rotameric",None]

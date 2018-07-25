@@ -1,4 +1,12 @@
+#!/usr/bin/env python
 
+"""
+residue.py: This have list of function calls which retrieves data related to a PDB or UniProt residue
+"""
+
+__author__          = "Sreenath Sasidharan Nair"
+__version__         = "1.0"
+__email__           = "sreenath@ebi.ac.uk"
 
 def get_mappings_for_residue_uniprot(entry_id, entity_id, residue_number, graph):
 

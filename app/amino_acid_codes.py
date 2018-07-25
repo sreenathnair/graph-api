@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+
+"""
+amino_acid_codes.py: This have dictionary of amino acid three letter codes and respective one letter code and name
+"""
+
+__author__          = "Sreenath Sasidharan Nair"
+__version__         = "1.0"
+__email__           = "sreenath@ebi.ac.uk"
 
 amino_acid_codes = {
 

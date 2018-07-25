@@ -1,5 +1,17 @@
+#!/usr/bin/env python
+
+"""
+uniprot.py: This have list of function calls which retrieves data for a UniProt accession/residue
+"""
+
 from .amino_acid_codes import amino_acid_codes
 from .residue import get_mappings_for_residue_pfam, get_mappings_for_residue_scop, get_mappings_for_residue_cath, get_mappings_for_residue_interpro
+
+
+__author__          = "Sreenath Sasidharan Nair"
+__version__         = "1.0"
+__email__           = "sreenath@ebi.ac.uk"
+
 
 def get_unipdb(uniprot_accession, graph):
 

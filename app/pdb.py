@@ -1,7 +1,17 @@
+#!/usr/bin/env python
+
+"""
+pdb.py: This have list of function calls which retrieves general data related to a PDB entry
+"""
+
 from flask import jsonify
 import re
 import more_itertools as mit
 from .residue import get_mappings_for_residue_binding_site
+
+__author__          = "Sreenath Sasidharan Nair"
+__version__         = "1.0"
+__email__           = "sreenath@ebi.ac.uk"
 
 def get_binding_sites_for_entry(entry_id, graph):
 
