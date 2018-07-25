@@ -2,6 +2,8 @@ test:
   script:
   - pwd
   - ls
+  - virtualenv --python python3 venv
+  - source venv/bin/activate
   - python --version
   - pip install -r pip_requirements.txt
   - ./run_tests.sh prod
