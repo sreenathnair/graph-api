@@ -17,3 +17,6 @@ password = os.environ.get('NEO4J_PASSWORD')
 
 graph = Graph(dest, username=username, password=password)
 
+
+def get_neo4j_instance():
+    return graph
