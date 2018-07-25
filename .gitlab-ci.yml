@@ -1,5 +1,7 @@
 test:
   script:
+  - pwd
+  - ls
   - python --version
   - pip install -r pip_requirements.txt
   - ./run_tests.sh prod
