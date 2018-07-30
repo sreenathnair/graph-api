@@ -126,7 +126,7 @@ def get_mappings_for_residue_scop(entry_id, entity_id, residue_number, graph):
     """
 
     result = list(graph.run(query, parameters= {
-        'entryId': str(entry_id), 'entityId': str(entity_id), 'residueNumber': residue_number
+        'entryId': str(entry_id), 'entityId': str(entity_id), 'residueNumber': str(residue_number)
     }))
 
     if(len(result) == 0):
@@ -320,3 +320,44 @@ def get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, s
         final_result.append(temp)
 
     return final_result, 200
+
+
+def get_basic_residue_details(entry_id, entity_id, residue_number, graph):
+
+    query = """
+    MATCH (entry:Entry {ID:$entry_id})-[:HAS_ENTITY]->(entity:Entity {ID:$entity_id})-[:HAS_PDB_RESIDUE]->(pdb_res:PDB_Residue {ID:$residue_number})-[chain_rel:IS_IN_CHAIN]->(chain:Chain)
+    RETURN chain.AUTH_ASYM_ID, chain.STRUCT_ASYM_ID, chain_rel.AUTH_SEQ_ID, chain_rel.PDB_INS_CODE, chain_rel.OBSERVED
+    """
+
+    chains = []
+    dict_chains = {}
+
+    mappings = list(graph.run(query, parameters= {
+        'entry_id': str(entry_id), 'entity_id': str(entity_id), 'residue_number': str(residue_number)
+    }))
+
+    if(len(mappings) == 0):
+        return {}, 404
+
+    for mapping in mappings:
+        (auth_asym_id, struct_asym_id, auth_seq_id, pdb_ins_code, observed) = mapping
+        chain_key = (auth_asym_id, struct_asym_id)
+
+        if dict_chains.get(chain_key) is None:
+            dict_chains[chain_key] = {
+                "auth_asym_id": auth_asym_id,
+                "struct_asym_id": struct_asym_id,
+                "residues": []
+            }
+        dict_chains[chain_key]["residues"].append({
+            "residue_number": int(residue_number),
+            "author_residue_number": int(auth_seq_id) if auth_seq_id is not None else None,
+            "author_insertion_code": "" if pdb_ins_code is None else pdb_ins_code,
+            "observed_in_chain": observed
+        })
+
+        
+    for chain_key in dict_chains.keys():
+        chains.append(dict_chains[chain_key])
+
+    return chains, 200

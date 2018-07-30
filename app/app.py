@@ -14,7 +14,7 @@ import json
 from .sifts import get_uniprot, get_interpro, get_cath, get_scop, get_go, get_ec, get_pfam, get_uniprot_to_pfam, get_uniprot_segments, get_isoforms, get_best_structures, get_homologene
 from  .sifts import get_ensembl, get_best_structures_residue_range, get_uniref90
 from .residue import get_mappings_for_residue_uniprot, get_mappings_for_residue_cath, get_mappings_for_residue_interpro, get_mappings_for_residue_pfam, get_mappings_for_residue_scop
-from .residue import get_mappings_for_residue_binding_site
+from .residue import get_mappings_for_residue_binding_site, get_basic_residue_details
 from .compound import get_compound_atoms, get_compound_bonds, get_compound_in_pdb, get_compound_co_factors, get_compound_co_factors_het
 from .validation import get_validation_protein_ramachandran_sidechain_outliers, get_validation_rama_sidechain_listing, get_validation_rna_pucker_suite_outliers
 from .validation import get_validation_global_percentiles, get_validation_summary_quality_scores, get_validation_key_validation_stats, get_validation_xray_refine_data_stats
@@ -594,7 +594,10 @@ def get_mappings_for_residue(entry_id, entity_id, residue_number):
 
     if(cache_result is None):
         cache_result = {
-            entry_id: {}
+            entry_id: {
+                "entity_id": int(entity_id),
+                "chains": []
+            }
         }
 
         unp_result, unp_status = get_mappings_for_residue_uniprot(entry_id, entity_id, residue_number, graph)
@@ -609,12 +612,29 @@ def get_mappings_for_residue(entry_id, entity_id, residue_number):
         else:
             response_status = 200
 
-        cache_result[entry_id]["UniProt"] = unp_result
-        cache_result[entry_id]["Pfam"] = pfam_result
-        cache_result[entry_id]["InterPro"] = interpro_result
-        cache_result[entry_id]["CATH"] = cath_result
-        cache_result[entry_id]["SCOP"] = scop_result
-        cache_result[entry_id]["binding_sites"] = binding_sites_result
+        chains, response_status = get_basic_residue_details(entry_id, entity_id, residue_number, graph)
+
+        modified_chains = []
+        for chain in chains:
+            
+            modified_residues = []
+
+            for residue in chain["residues"]:
+                
+                residue["features"] = {}
+                residue["features"]["UniProt"] = unp_result
+                residue["features"]["Pfam"] = pfam_result
+                residue["features"]["InterPro"] = interpro_result
+                residue["features"]["CATH"] = cath_result
+                residue["features"]["SCOP"] = scop_result
+                residue["features"]["binding_sites"] = binding_sites_result
+
+                modified_residues.append(residue)
+
+            chain["residues"] = modified_residues
+            modified_chains.append(chain)
+
+        cache_result[entry_id]["chains"] = modified_chains
 
         cache.set('get_mappings_for_residue:{}:{}:{}'.format(entry_id, entity_id, residue_number), cache_result, timeout=cache_timeout)
     else:
@@ -639,9 +659,11 @@ def get_mappings_for_residue_range(entry_id, entity_id, residue_start, residue_e
         cache_result = {
             entry_id: {
                 "entity_id": int(entity_id),
-                "residues": []
+                "chains": []
             }
         }
+
+        dict_chains = {}
 
         for residue_number in range(int(residue_start), int(residue_end) + 1):
             
@@ -654,24 +676,41 @@ def get_mappings_for_residue_range(entry_id, entity_id, residue_start, residue_e
             scop_result, scop_status = get_mappings_for_residue_scop(entry_id, entity_id, residue_number, graph)
             binding_sites_result, binding_sites_status = get_mappings_for_residue_binding_site(entry_id, entity_id, residue_number, True, graph)
 
-            # if(unp_status != 200 and pfam_status != 200 and interpro_status != 200 and cath_status != 200 and scop_status != 200 and binding_sites_status != 200):
-            #     response_status = unp_status
-            # else:
-            #     response_status = 200
+            if(unp_status != 200 and pfam_status != 200 and interpro_status != 200 and cath_status != 200 and scop_status != 200 and binding_sites_status != 200):
+                response_status = unp_status
+            else:
+                response_status = 200
 
-            residue_element = {
-                "residue_number": int(residue_number),
-                "features": {
-                    "UniProt": unp_result,
-                    "Pfam": pfam_result,
-                    "InterPro": interpro_result,
-                    "CATH": cath_result,
-                    "SCOP": scop_result,
-                    "binding_sites": binding_sites_result
-                }
-            }
+            chains, response_status = get_basic_residue_details(entry_id, entity_id, residue_number, graph)
 
-            cache_result[entry_id]["residues"].append(residue_element)
+            for chain in chains:
+                
+                auth_asym_id = chain["auth_asym_id"]
+                struct_asym_id = chain["struct_asym_id"]
+                chain_key = (auth_asym_id, struct_asym_id)
+
+                if dict_chains.get(chain_key) is None:
+                    dict_chains[chain_key] = {
+                        "auth_asym_id": auth_asym_id,
+                        "struct_asym_id": struct_asym_id,
+                        "residues": []
+                    }
+
+                for residue in chain["residues"]:
+                    
+                    residue["features"] = {}
+                    residue["features"]["UniProt"] = unp_result
+                    residue["features"]["Pfam"] = pfam_result
+                    residue["features"]["InterPro"] = interpro_result
+                    residue["features"]["CATH"] = cath_result
+                    residue["features"]["SCOP"] = scop_result
+                    residue["features"]["binding_sites"] = binding_sites_result
+
+                    dict_chains[chain_key]["residues"].append(residue)
+
+            
+        for key in dict_chains.keys():
+            cache_result[entry_id]["chains"].append(dict_chains[key])
 
         cache.set('get_mappings_for_residue_range:{}:{}:{}:{}'.format(entry_id, entity_id, residue_start, residue_end), cache_result, timeout=cache_timeout)
     else:
